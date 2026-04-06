@@ -3,25 +3,21 @@ import { v4 as uuidv4 } from 'uuid'
 import type {
   Event,
   EventInsert,
-  EventType,
-  EventSubType,
-  ShotSituation,
-  ShotZone,
   Match,
   Team,
   Player,
   Roster,
-  InputStep,
 } from '@/lib/db/schema'
 import { enqueue } from '@/lib/sync/syncQueue'
 import { upsertEvent, voidEventWithSync } from '@/lib/sync/supabaseSync'
+import { supabase } from '@/lib/supabase/client'
 
 export interface RosteredPlayer extends Player {
   roster: Roster
 }
 
 interface MatchStoreState {
-  // Session
+  // Session data
   match: Match | null
   homeTeam: Team | null
   awayTeam: Team | null
@@ -32,10 +28,12 @@ interface MatchStoreState {
   periodStartedAt: string | null
   isOnline: boolean
 
-  // Live input flow
-  inputStep: InputStep
+  // Live match context — set by operator during the match
+  currentMatchMinute: number
+  currentLineupId: string | null
+  currentLineupPlayerIds: string[]  // player IDs currently on court
 
-  // Actions
+  // Session actions
   setMatchFinalized: () => void
   clearSession: () => void
   setSession: (data: {
@@ -47,16 +45,14 @@ interface MatchStoreState {
   }) => void
   setOnline: (online: boolean) => void
   startPeriod: (period: number) => void
+  setMatchMinute: (minute: number) => void
 
-  // Input flow
-  selectPlayer: (playerId: string, teamId: string) => void
-  selectEventType: (eventType: EventType) => void
-  selectSubType: (subType: EventSubType) => void
-  selectContext: (situation: ShotSituation | null) => void
-  commitWithZone: (zone: ShotZone | null) => void
-  cancelInput: () => void
+  // Lineup / substitution
+  initLineup: (playerIds: string[]) => Promise<void>
+  logSubstitution: (playerInId: string, playerOutId: string) => Promise<void>
 
-  // Event management
+  // Event actions
+  logAttack: (teamId: string) => void
   commitEvent: (overrides?: Partial<EventInsert>) => void
   undoLast: () => void
   voidEvent: (clientId: string) => void
@@ -72,104 +68,100 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
   currentPeriod: 1,
   periodStartedAt: null,
   isOnline: navigator.onLine,
-  inputStep: { step: 'idle' },
+  currentMatchMinute: 0,
+  currentLineupId: null,
+  currentLineupPlayerIds: [],
 
   setMatchFinalized: () =>
     set(state => ({ match: state.match ? { ...state.match, status: 'final' } : null })),
+
   clearSession: () =>
-    set({ match: null, homeTeam: null, awayTeam: null, trackedPlayers: [], opponentPlayers: [], events: [], inputStep: { step: 'idle' } }),
-  setSession: (data) => set({ ...data, events: [], currentPeriod: 1, periodStartedAt: null }),
+    set({
+      match: null,
+      homeTeam: null,
+      awayTeam: null,
+      trackedPlayers: [],
+      opponentPlayers: [],
+      events: [],
+      currentMatchMinute: 0,
+      currentLineupId: null,
+      currentLineupPlayerIds: [],
+    }),
+
+  setSession: (data) => {
+    const starterIds = data.trackedPlayers
+      .filter(p => p.roster.is_starter)
+      .map(p => p.id)
+    set({ ...data, events: [], currentPeriod: 1, periodStartedAt: null, currentMatchMinute: 0, currentLineupId: null, currentLineupPlayerIds: starterIds })
+  },
+
   setOnline: (online) => set({ isOnline: online }),
 
   startPeriod: (period) => {
-    const { match, currentPeriod } = get()
+    const { match } = get()
     if (!match) return
     const now = new Date().toISOString()
     set({ currentPeriod: period, periodStartedAt: now })
     get().commitEvent({
       event_type: 'PERIOD_MARKER',
-      sub_type: period === 1 ? 'period_start' : 'period_start',
-      period: period,
+      sub_type: 'period_start',
+      period,
       player_id: null,
       team_id: match.tracked_team_id,
     })
-    void currentPeriod // suppress unused warning
   },
 
-  selectPlayer: (playerId, teamId) =>
-    set({ inputStep: { step: 'player_selected', playerId, teamId } }),
+  setMatchMinute: (minute) => set({ currentMatchMinute: minute }),
 
-  selectEventType: (eventType) => {
-    const { inputStep } = get()
-    if (inputStep.step !== 'player_selected') return
-    set({
-      inputStep: {
-        step: 'event_type_selected',
-        playerId: inputStep.playerId,
-        teamId: inputStep.teamId,
-        eventType,
-      },
-    })
+  initLineup: async (playerIds) => {
+    const { match, currentPeriod, currentMatchMinute } = get()
+    if (!match) return
+    // Set local lineup immediately; Supabase row is best-effort
+    set({ currentLineupPlayerIds: playerIds })
+    const { data, error } = await supabase
+      .from('court_lineups')
+      .insert({ match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: playerIds })
+      .select('id')
+      .single()
+    if (!error && data) set({ currentLineupId: data.id })
   },
 
-  selectSubType: (subType) => {
-    const { inputStep } = get()
-    if (inputStep.step !== 'event_type_selected') return
-    set({
-      inputStep: {
-        step: 'sub_type_selected',
-        playerId: inputStep.playerId,
-        teamId: inputStep.teamId,
-        eventType: inputStep.eventType,
-        subType,
-      },
-    })
-  },
+  logSubstitution: async (playerInId, playerOutId) => {
+    const { match, currentPeriod, currentMatchMinute, currentLineupPlayerIds } = get()
+    if (!match) return
 
-  selectContext: (situation) => {
-    const { inputStep } = get()
-    if (inputStep.step !== 'sub_type_selected') return
-    if (inputStep.eventType === 'SHOT') {
-      // For shots: go to context_selected so zone picker can render
-      set({
-        inputStep: {
-          step: 'context_selected',
-          playerId: inputStep.playerId,
-          teamId: inputStep.teamId,
-          eventType: inputStep.eventType,
-          subType: inputStep.subType,
-          situation,
-        },
-      })
-    } else {
-      get().commitEvent({
-        event_type: inputStep.eventType,
-        sub_type: inputStep.subType,
-        player_id: inputStep.playerId,
-        team_id: inputStep.teamId,
-        situation,
-        zone: null,
-      })
-    }
-  },
+    const newPlayerIds = currentLineupPlayerIds
+      .filter(id => id !== playerOutId)
+      .concat(playerInId)
 
-  commitWithZone: (zone) => {
-    const { inputStep } = get()
-    if (inputStep.step !== 'context_selected') return
+    // Update local state immediately so the panel reflects the change at once
+    set({ currentLineupPlayerIds: newPlayerIds })
+
+    const { data: lineupData, error } = await supabase
+      .from('court_lineups')
+      .insert({ match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: newPlayerIds })
+      .select('id')
+      .single()
+
+    if (error || !lineupData) return
+    set({ currentLineupId: lineupData.id })
+
     get().commitEvent({
-      event_type: inputStep.eventType,
-      sub_type: inputStep.subType,
-      player_id: inputStep.playerId,
-      team_id: inputStep.teamId,
-      situation: inputStep.situation,
-      zone,
+      event_type: 'SUBSTITUTION',
+      sub_type: null,
+      player_id: playerInId,
+      team_id: match.tracked_team_id,
+      context: { player_out_id: playerOutId },
+      lineup_id: lineupData.id,
     })
   },
 
-  cancelInput: () => set({ inputStep: { step: 'idle' } }),
+  logAttack: (teamId) => {
+    get().commitEvent({ event_type: 'ATTACK', player_id: null, team_id: teamId })
+  },
 
   commitEvent: (overrides = {}) => {
-    const { match, currentPeriod, periodStartedAt, events } = get()
+    const { match, currentPeriod, periodStartedAt, events, currentMatchMinute, currentLineupId } = get()
     if (!match) return
 
     const now = new Date().toISOString()
@@ -184,13 +176,17 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
       match_id: match.id,
       period: currentPeriod,
       match_clock: matchClockSecs,
+      match_minute: currentMatchMinute,
       wall_clock: now,
       team_id: match.tracked_team_id,
       player_id: null,
       event_type: 'SHOT',
       sub_type: null,
-      situation: null,
+      shot_range: null,
+      phase_type: null,
+      numerical_state: null,
       zone: null,
+      lineup_id: currentLineupId,
       context: {},
       is_voided: false,
       void_reason: null,
@@ -205,66 +201,52 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
       ...overrides,
     }
 
-    // 1. Update local state immediately
-    set({ events: [...events, event], inputStep: { step: 'idle' } })
-
-    // 2. Write to IndexedDB sync queue
+    set({ events: [...events, event] })
     void enqueue(event as EventInsert)
-
-    // 3. Try to push to Supabase (non-blocking — failure handled by queue)
     if (navigator.onLine) {
-      void upsertEvent(event as EventInsert).catch(() => {
-        // Already in queue; will retry on next flush
-      })
+      void upsertEvent(event as EventInsert).catch(() => {})
     }
   },
 
   undoLast: () => {
     const { events } = get()
-    const lastActive = [...events]
-      .reverse()
-      .find((e) => !e.is_voided)
+    const lastActive = [...events].reverse().find(e => !e.is_voided)
     if (!lastActive) return
     get().voidEvent(lastActive.client_id)
   },
 
   voidEvent: (clientId) => {
-    set((state) => ({
-      events: state.events.map((e) =>
+    set(state => ({
+      events: state.events.map(e =>
         e.client_id === clientId
           ? { ...e, is_voided: true, voided_at: new Date().toISOString() }
           : e,
       ),
     }))
-    void voidEventWithSync(clientId).catch(() => {
-      // Void will be retried — local state already reflects it
-    })
+    void voidEventWithSync(clientId).catch(() => {})
   },
 }))
 
-// ─── Derived selectors ────────────────────────────────────────────────────────
+// ─── Selectors ────────────────────────────────────────────────────────────────
 
 export const selectActiveEvents = (state: MatchStoreState) =>
-  state.events.filter((e) => !e.is_voided && !e.is_edited)
+  state.events.filter(e => !e.is_voided && !e.is_edited)
 
 export const selectTrackedScore = (state: MatchStoreState) =>
   selectActiveEvents(state).filter(
-    (e) => e.event_type === 'SHOT' && e.sub_type === 'goal' && e.team_id === state.match?.tracked_team_id,
+    e => e.event_type === 'SHOT' && e.sub_type === 'goal' && e.team_id === state.match?.tracked_team_id,
   ).length
 
 export const selectOpponentScore = (state: MatchStoreState) =>
-  selectActiveEvents(state).filter(
-    (e) => e.event_type === 'SHOT' && e.sub_type === 'goal' && e.team_id !== state.match?.tracked_team_id,
-  ).length
+  selectActiveEvents(state).filter(e => {
+    const trackedId = state.match?.tracked_team_id
+    return (
+      // Opponent scored via attacking flow
+      (e.event_type === 'SHOT' && e.sub_type === 'goal' && e.team_id !== trackedId) ||
+      // Opponent scored via GK flow (goal_conceded on tracked GK)
+      (e.event_type === 'GOALKEEPER_ACTION' && e.sub_type === 'goal_conceded' && e.team_id === trackedId)
+    )
+  }).length
 
-export const selectActiveSuspensions = (state: MatchStoreState) => {
-  const active = selectActiveEvents(state)
-  return active
-    .filter((e) => e.event_type === 'SUSPENSION' && e.sub_type === '2min')
-    .map((e) => ({
-      ...e,
-      endsAt: e.match_clock !== null
-        ? e.match_clock + 120 // 2 minutes in seconds
-        : null,
-    }))
-}
+export const selectActiveSuspensions = (state: MatchStoreState) =>
+  selectActiveEvents(state).filter(e => e.event_type === 'SUSPENSION' && e.sub_type === '2min')

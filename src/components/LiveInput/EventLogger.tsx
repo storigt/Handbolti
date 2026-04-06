@@ -1,163 +1,204 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useShallow } from 'zustand/react/shallow'
-import { useMatchStore, selectActiveEvents, selectTrackedScore, selectOpponentScore, selectActiveSuspensions } from '@/store/matchStore'
+import {
+  useMatchStore,
+  selectActiveEvents, selectTrackedScore, selectOpponentScore,
+} from '@/store/matchStore'
+import type { RosteredPlayer } from '@/store/matchStore'
 import { finalizeMatch } from '@/lib/supabase/reportQueries'
-import type { EventType, EventSubType, ShotSituation, ShotZone } from '@/lib/db/schema'
+import type { ShotRange, PhaseType, NumericalState, ShotZone, EventInsert } from '@/lib/db/schema'
 
-// ─── Player tile ──────────────────────────────────────────────────────────────
+// ─── Local flow state ─────────────────────────────────────────────────────────
 
-function PlayerTile({ name, jersey, isSelected, onSelect }: {
-  playerId: string
-  name: string
-  jersey: number | null
-  isSelected: boolean
-  onSelect: () => void
-}) {
-  return (
-    <button
-      onPointerDown={onSelect}
-      className={`
-        flex flex-col items-center justify-center
-        rounded-lg border-2 p-2 min-h-[72px] min-w-[72px]
-        text-sm font-semibold select-none
-        active:scale-95 transition-transform
-        ${isSelected
-          ? 'bg-blue-600 border-blue-700 text-white'
-          : 'bg-white border-gray-300 text-gray-800 hover:border-blue-400'
-        }
-      `}
-    >
-      <span className="text-xl font-bold leading-none">{jersey ?? '?'}</span>
-      <span className="mt-1 text-xs truncate max-w-[64px]">{name}</span>
-    </button>
-  )
+type FlowStep =
+  | { s: 'idle' }
+  | { s: 'category'; pid: string; tid: string }
+  // ── Attack ──────────────────────────────────────────────────────────────────
+  | { s: 'atk_sub'; pid: string; tid: string }
+  | { s: 'atk_shot_range'; pid: string; tid: string }
+  | { s: 'atk_shot_phase'; pid: string; tid: string; range: ShotRange }
+  | { s: 'atk_shot_numerical'; pid: string; tid: string; range: ShotRange; phase: PhaseType }
+  | { s: 'atk_shot_assist'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
+  | { s: 'atk_shot_vitasending'; pid: string; tid: string; phase: PhaseType; numerical: NumericalState }
+  | { s: 'atk_shot_fiskad_viti'; pid: string; tid: string; phase: PhaseType; numerical: NumericalState; vitasendingId: string | null }
+  | { s: 'atk_shot_zone'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null }
+  | { s: 'atk_shot_outcome'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null; zone: ShotZone }
+  | { s: 'atk_other'; pid: string; tid: string }
+  | { s: 'atk_turnover'; pid: string; tid: string }
+  // ── GK ──────────────────────────────────────────────────────────────────────
+  | { s: 'gk_sub'; pid: string; tid: string }
+  | { s: 'gk_shot_range'; pid: string; tid: string }
+  | { s: 'gk_shot_phase'; pid: string; tid: string; range: ShotRange }
+  | { s: 'gk_shot_numerical'; pid: string; tid: string; range: ShotRange; phase: PhaseType }
+  | { s: 'gk_shot_zone'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
+  | { s: 'gk_shot_outcome'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; zone: ShotZone }
+  | { s: 'gk_other'; pid: string; tid: string }
+  // ── Defense ─────────────────────────────────────────────────────────────────
+  | { s: 'def_sub'; pid: string; tid: string }
+  | { s: 'def_brot_type'; pid: string; tid: string }
+  | { s: 'def_brot_card'; pid: string; tid: string; foulSub: 'attacking_foul' | '7m_awarded' }
+  | { s: 'def_other'; pid: string; tid: string }
+  | { s: 'def_duel_outcome'; pid: string; tid: string }
+  | { s: 'def_refsing'; pid: string; tid: string }
+  // ── Substitution ─────────────────────────────────────────────────────────────
+  | { s: 'sub_pick_in' }
+  | { s: 'sub_pick_out'; playerInId: string }
+
+// ─── Option data ──────────────────────────────────────────────────────────────
+
+const RANGES: { v: ShotRange; label: string }[] = [
+  { v: 'penalty',     label: 'Víti' },
+  { v: 'corner_wing', label: 'Horn' },
+  { v: '9m_plus',     label: '9m+' },
+  { v: '7_8m',        label: '7–8m' },
+  { v: '6m',          label: '6m' },
+  { v: 'line',        label: 'Lína' },
+]
+
+const PHASES: { v: PhaseType; label: string }[] = [
+  { v: 'fast_break',  label: 'Hraðaupphlaup' },
+  { v: 'second_wave', label: 'Seinni bylgja' },
+  { v: 'set_play',    label: 'Uppstilltur leikur' },
+]
+
+const ATK_NUMERICALS: { v: NumericalState; label: string }[] = [
+  { v: '6v6',         label: '6 á 6' },
+  { v: 'inferiority', label: 'Undirtala' },
+  { v: 'superiority', label: 'Yfirtala' },
+  { v: '7v6',         label: '7 á 6' },
+]
+
+const GK_NUMERICALS: { v: NumericalState; label: string }[] = [
+  { v: '6v6',         label: '6 á 6' },
+  { v: 'inferiority', label: 'Undirtala' },
+  { v: 'superiority', label: 'Yfirtala' },
+  { v: '6v7',         label: '6 á 7' },
+]
+
+const RANGE_LABEL: Record<ShotRange, string> = {
+  penalty: 'Víti', corner_wing: 'Horn', '9m_plus': '9m+',
+  '7_8m': '7–8m', '6m': '6m', line: 'Lína',
+}
+const PHASE_LABEL: Record<PhaseType, string> = {
+  fast_break: 'Hraðaupphlaup', second_wave: 'Seinni bylgja', set_play: 'Uppstilltur leikur',
+}
+const NUMERICAL_LABEL: Record<NumericalState, string> = {
+  '6v6': '6á6', inferiority: 'Undirtala', superiority: 'Yfirtala', '7v6': '7á6', '6v7': '6á7',
 }
 
-// ─── Action button ────────────────────────────────────────────────────────────
+// ─── Primitive UI helpers ─────────────────────────────────────────────────────
 
-function ActionButton({ label, color, onSelect }: {
-  label: string
-  color: string
-  onSelect: () => void
+function Btn({ label, color = 'bg-slate-700', onTap, size = 'md', full = false }: {
+  label: string; color?: string; onTap: () => void; size?: 'sm' | 'md' | 'lg'; full?: boolean
 }) {
+  const sz = size === 'lg' ? 'py-5 text-lg' : size === 'sm' ? 'py-2 text-sm' : 'py-4 text-base'
   return (
     <button
-      onPointerDown={onSelect}
-      className={`
-        px-4 py-4 rounded-lg text-white font-semibold text-base min-h-[56px]
-        active:scale-95 transition-transform select-none ${color}
-      `}
+      onPointerDown={onTap}
+      className={`${color} ${full ? 'w-full' : ''} text-white font-semibold rounded-xl ${sz} px-3
+        active:scale-95 transition-transform select-none`}
     >
       {label}
     </button>
   )
 }
 
-// ─── Zone picker ──────────────────────────────────────────────────────────────
-
-const ZONE_LABELS: Record<number, string> = {
-  1: 'Top L', 2: 'Top C', 3: 'Top R',
-  4: 'Mid L', 5: 'Mid C', 6: 'Mid R',
-  7: 'Bot L', 8: 'Bot C', 9: 'Bot R',
-  10: 'Wide',
+function Breadcrumb({ items }: { items: (string | undefined)[] }) {
+  const parts = items.filter(Boolean) as string[]
+  if (!parts.length) return null
+  return (
+    <div className="flex gap-1 flex-wrap mb-3">
+      {parts.map((p, i) => (
+        <span key={i} className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full">{p}</span>
+      ))}
+    </div>
+  )
 }
 
-function ZonePicker({ onSelect }: { onSelect: (zone: ShotZone | null) => void }) {
+function StepTitle({ children }: { children: string }) {
+  return <p className="text-sm font-semibold text-gray-500 uppercase tracking-wide mb-3">{children}</p>
+}
+
+function PlayerPickerGrid({ players, onPick, onNone, noneLabel = 'Enginn' }: {
+  players: RosteredPlayer[]
+  onPick: (id: string) => void
+  onNone: () => void
+  noneLabel?: string
+}) {
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm font-medium text-gray-600">Shot zone (optional)</p>
-      <div className="grid grid-cols-3 gap-1 w-[220px]">
-        {([1, 2, 3, 4, 5, 6, 7, 8, 9] as ShotZone[]).map((z) => (
+    <div>
+      <div className="grid grid-cols-4 gap-2 mb-2">
+        {players.map(p => (
           <button
-            key={z}
-            onPointerDown={() => onSelect(z)}
-            className="h-14 rounded border-2 border-gray-300 bg-white text-xs font-semibold hover:border-blue-400 active:scale-95 transition-transform"
+            key={p.id}
+            onPointerDown={() => onPick(p.id)}
+            className="flex flex-col items-center py-2 px-1 rounded-xl border-2 border-gray-200 bg-white
+              hover:border-blue-400 active:scale-95 transition-transform"
           >
-            {ZONE_LABELS[z]}
+            <span className="text-lg font-bold leading-none">{p.jersey_number ?? '?'}</span>
+            <span className="text-xs text-gray-500 truncate w-full text-center mt-0.5">{p.last_name}</span>
           </button>
         ))}
       </div>
-      <div className="flex gap-1">
-        <button
-          onPointerDown={() => onSelect(10)}
-          className="flex-1 h-10 rounded border-2 border-yellow-400 bg-yellow-50 text-xs font-semibold active:scale-95 transition-transform"
-        >
-          Wide / Post
+      <button
+        onPointerDown={onNone}
+        className="w-full py-2 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-400
+          bg-gray-50 active:scale-95 transition-transform"
+      >
+        {noneLabel}
+      </button>
+    </div>
+  )
+}
+
+function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
+  onZone: (z: ShotZone) => void
+  onBlocked: () => void
+  onWide: () => void
+  onPost: () => void
+}) {
+  const zones: ShotZone[] = [1, 2, 3, 4, 5, 6, 7, 8, 9]
+  const labels: Record<number, string> = {
+    1: 'Efst V', 2: 'Efst M', 3: 'Efst H',
+    4: 'Miðj V', 5: 'Miðj M', 6: 'Miðj H',
+    7: 'Neðst V', 8: 'Neðst M', 9: 'Neðst H',
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="grid grid-cols-3 gap-1">
+        {zones.map(z => (
+          <button
+            key={z}
+            onPointerDown={() => onZone(z)}
+            className="h-14 rounded-xl border-2 border-green-300 bg-green-50 text-xs font-semibold
+              text-green-800 hover:bg-green-100 active:scale-95 transition-transform"
+          >
+            {labels[z]}
+          </button>
+        ))}
+      </div>
+      <div className="grid grid-cols-3 gap-1 mt-1">
+        <button onPointerDown={onBlocked}
+          className="py-3 rounded-xl border-2 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600
+            active:scale-95 transition-transform">
+          Blokk
         </button>
-        <button
-          onPointerDown={() => onSelect(null)}
-          className="flex-1 h-10 rounded border-2 border-gray-200 bg-gray-50 text-xs text-gray-500 active:scale-95 transition-transform"
-        >
-          Skip
+        <button onPointerDown={onPost}
+          className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
+            active:scale-95 transition-transform">
+          Stöng
+        </button>
+        <button onPointerDown={onWide}
+          className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
+            active:scale-95 transition-transform">
+          Víðlægt
         </button>
       </div>
     </div>
   )
 }
 
-// ─── Event type config ────────────────────────────────────────────────────────
-
-const EVENT_TYPES: Array<{ type: EventType; label: string; color: string }> = [
-  { type: 'SHOT',              label: 'Shot',        color: 'bg-green-600 hover:bg-green-700' },
-  { type: 'TURNOVER',          label: 'Turnover',    color: 'bg-orange-500 hover:bg-orange-600' },
-  { type: 'SUSPENSION',        label: 'Suspension',  color: 'bg-red-600 hover:bg-red-700' },
-  { type: 'FOUL',              label: 'Foul',        color: 'bg-yellow-500 hover:bg-yellow-600' },
-  { type: 'GOALKEEPER_ACTION', label: 'GK Action',   color: 'bg-purple-600 hover:bg-purple-700' },
-  { type: 'TIMEOUT',           label: 'Timeout',     color: 'bg-gray-600 hover:bg-gray-700' },
-]
-
-const SUB_TYPES: Record<EventType, Array<{ sub: EventSubType; label: string }>> = {
-  SHOT: [
-    { sub: 'goal',      label: 'Goal' },
-    { sub: 'saved',     label: 'Saved' },
-    { sub: 'blocked',   label: 'Blocked' },
-    { sub: 'post',      label: 'Post' },
-    { sub: 'wide',      label: 'Wide' },
-    { sub: 'technical', label: 'Technical' },
-  ],
-  TURNOVER: [
-    { sub: 'bad_pass',       label: 'Bad pass' },
-    { sub: 'lost_dribble',   label: 'Lost dribble' },
-    { sub: 'offensive_foul', label: 'Off. foul' },
-    { sub: 'stepped',        label: 'Stepped' },
-    { sub: 'double_dribble', label: 'Dbl. dribble' },
-    { sub: 'out_of_bounds',  label: 'Out of bounds' },
-    { sub: 'shot_clock',     label: 'Shot clock' },
-    { sub: 'other',          label: 'Other' },
-  ],
-  SUSPENSION: [
-    { sub: '2min',             label: '2 min' },
-    { sub: 'yellow_card',      label: 'Yellow card' },
-    { sub: 'red_card',         label: 'Red card' },
-    { sub: 'blue_card',        label: 'Blue card' },
-    { sub: 'disqualification', label: 'DQ' },
-  ],
-  FOUL: [
-    { sub: 'attacking_foul',      label: 'Att. foul' },
-    { sub: '7m_awarded',          label: '7m awarded' },
-    { sub: 'passive_play_warning', label: 'Passive play' },
-  ],
-  GOALKEEPER_ACTION: [
-    { sub: 'save',          label: 'Save' },
-    { sub: 'goal_conceded', label: 'Goal conceded' },
-    { sub: 'parry',         label: 'Parry' },
-  ],
-  TIMEOUT: [
-    { sub: 'team_timeout',    label: 'Team timeout' },
-    { sub: 'referee_timeout', label: 'Ref timeout' },
-  ],
-  PERIOD_MARKER: [],
-}
-
-const SITUATIONS: Array<{ value: ShotSituation; label: string }> = [
-  { value: 'set_offense',   label: 'Set offense' },
-  { value: 'fast_break',    label: 'Fast break' },
-  { value: '7m_penalty',    label: '7 metre' },
-  { value: 'counter_attack', label: 'Counter' },
-  { value: 'breakthrough',  label: 'Breakthrough' },
-]
-
-// ─── Score display ────────────────────────────────────────────────────────────
+// ─── ScoreBar ─────────────────────────────────────────────────────────────────
 
 function ScoreBar() {
   const match = useMatchStore(s => s.match)
@@ -167,320 +208,806 @@ function ScoreBar() {
   const opponentScore = useMatchStore(selectOpponentScore)
   const period = useMatchStore(s => s.currentPeriod)
   const isOnline = useMatchStore(s => s.isOnline)
-
   const isTrackedHome = match?.tracked_team_id === match?.home_team_id
-
   return (
-    <div className="flex items-center justify-between bg-slate-900 text-white px-4 py-2 h-14">
-      <div className="flex items-center gap-3">
+    <div className="flex items-center justify-between bg-slate-900 text-white px-4 py-2 h-14 shrink-0">
+      <div className="flex items-center gap-2">
         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'}`} />
         <span className="text-xs text-slate-400">{isOnline ? 'Live' : 'Offline'}</span>
       </div>
       <div className="flex items-center gap-4 text-2xl font-bold tabular-nums">
-        <span>{homeTeam?.short_name ?? 'HME'}</span>
+        <span>{homeTeam?.name ?? 'Heimalið'}</span>
         <span>
           {isTrackedHome ? trackedScore : opponentScore}
           {' – '}
           {isTrackedHome ? opponentScore : trackedScore}
         </span>
-        <span>{awayTeam?.short_name ?? 'AWY'}</span>
+        <span>{awayTeam?.name ?? 'Gestir'}</span>
       </div>
-      <span className="text-sm text-slate-400">P{period}</span>
+      <span className="text-sm text-slate-400">Leikhluti {period}</span>
     </div>
   )
 }
 
-// ─── Recent events feed ───────────────────────────────────────────────────────
+// ─── TopBar ───────────────────────────────────────────────────────────────────
+
+function TopBar({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) => void }) {
+  const match = useMatchStore(s => s.match)
+  const minute = useMatchStore(s => s.currentMatchMinute)
+  const setMinute = useMatchStore(s => s.setMatchMinute)
+  const logAttack = useMatchStore(s => s.logAttack)
+  const undoLast = useMatchStore(s => s.undoLast)
+  const setMatchFinalized = useMatchStore(s => s.setMatchFinalized)
+  const trackedScore = useMatchStore(selectTrackedScore)
+  const opponentScore = useMatchStore(selectOpponentScore)
+  const events = useMatchStore(useShallow(selectActiveEvents))
+  const [confirming, setConfirming] = useState(false)
+  const [loading, setLoading] = useState(false)
+
+  if (!match) return null
+  const opponentTeamId = match.tracked_team_id === match.home_team_id ? match.away_team_id : match.home_team_id
+  const trackedAttacks = events.filter(e => e.event_type === 'ATTACK' && e.team_id === match.tracked_team_id).length
+  const opponentAttacks = events.filter(e => e.event_type === 'ATTACK' && e.team_id === opponentTeamId).length
+
+  return (
+    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 border-b border-slate-200 flex-wrap shrink-0">
+
+      {/* Minute counter */}
+      <div className="flex items-center gap-0.5 bg-white rounded-lg border border-gray-300 overflow-hidden">
+        <button onPointerDown={() => setMinute(Math.max(0, minute - 1))}
+          className="px-2 py-1.5 text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">−</button>
+        <span className="w-9 text-center font-bold text-sm tabular-nums">{minute}'</span>
+        <button onPointerDown={() => setMinute(minute + 1)}
+          className="px-2 py-1.5 text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">+</button>
+      </div>
+
+      {/* Attack counters */}
+      <button onPointerDown={() => logAttack(match.tracked_team_id)}
+        className="flex items-center gap-1.5 bg-green-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+          active:scale-95 transition-transform select-none">
+        Sókn
+        <span className="bg-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs tabular-nums">
+          {trackedAttacks}
+        </span>
+      </button>
+      <button onPointerDown={() => logAttack(opponentTeamId)}
+        className="flex items-center gap-1.5 bg-orange-500 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+          active:scale-95 transition-transform select-none">
+        Vörn
+        <span className="bg-orange-700 rounded-full w-5 h-5 flex items-center justify-center text-xs tabular-nums">
+          {opponentAttacks}
+        </span>
+      </button>
+
+      {/* Substitution */}
+      <button onPointerDown={() => setFlow({ s: 'sub_pick_in' })}
+        className="bg-slate-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+          active:scale-95 transition-transform select-none">
+        Skipti
+      </button>
+
+      {/* Undo */}
+      <button onPointerDown={undoLast}
+        className="bg-red-100 text-red-700 border border-red-200 rounded-lg px-3 py-1.5 text-sm font-semibold
+          active:scale-95 transition-transform select-none">
+        Undo
+      </button>
+
+      {/* End match */}
+      {confirming ? (
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs text-gray-500">Ljúka leik?</span>
+          <button
+            onPointerDown={async () => {
+              setLoading(true)
+              try {
+                const isTrackedHome = match.home_team_id === match.tracked_team_id
+                const homeScore = isTrackedHome ? trackedScore : opponentScore
+                const awayScore = isTrackedHome ? opponentScore : trackedScore
+                await finalizeMatch(match.id, homeScore, awayScore)
+                setMatchFinalized()
+              } finally { setLoading(false) }
+            }}
+            disabled={loading}
+            className="bg-green-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold active:scale-95">
+            {loading ? '…' : 'Já'}
+          </button>
+          <button onPointerDown={() => setConfirming(false)}
+            className="bg-gray-200 text-gray-700 rounded-lg px-3 py-1.5 text-sm active:scale-95">
+            Nei
+          </button>
+        </div>
+      ) : (
+        <button onPointerDown={() => setConfirming(true)}
+          className="bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+            active:scale-95 transition-transform select-none">
+          Ljúka
+        </button>
+      )}
+
+      {/* Cancel current flow */}
+      {flow.s !== 'idle' && (
+        <button onPointerDown={() => setFlow({ s: 'idle' })}
+          className="ml-auto bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 text-sm
+            active:scale-95 transition-transform select-none">
+          Hætta við
+        </button>
+      )}
+    </div>
+  )
+}
+
+// ─── RecentEventsFeed ─────────────────────────────────────────────────────────
 
 function RecentEventsFeed() {
   const events = useMatchStore(useShallow(selectActiveEvents))
   const trackedPlayers = useMatchStore(s => s.trackedPlayers)
   const voidEvent = useMatchStore(s => s.voidEvent)
-
-  const recent = [...events].reverse().slice(0, 5)
-
-  function getPlayerLabel(playerId: string | null) {
-    if (!playerId) return '—'
-    const p = trackedPlayers.find(p => p.id === playerId)
-    return p ? `#${p.jersey_number ?? '?'} ${p.last_name}` : `…${playerId.slice(-4)}`
+  const recent = [...events].reverse().slice(0, 8)
+  if (!recent.length) return null
+  function playerLabel(pid: string | null) {
+    if (!pid) return '—'
+    const p = trackedPlayers.find(p => p.id === pid)
+    return p ? `#${p.jersey_number ?? '?'} ${p.last_name}` : `…${pid.slice(-4)}`
   }
-
-  if (recent.length === 0) return null
-
   return (
-    <div className="bg-slate-800 px-2 py-1 flex gap-2 overflow-x-auto">
-      {recent.map(event => (
+    <div className="bg-slate-800 px-2 py-1.5 flex gap-2 overflow-x-auto shrink-0">
+      {recent.map(e => (
         <button
-          key={event.client_id}
-          onPointerDown={() => voidEvent(event.client_id)}
-          className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-red-700 text-white text-xs rounded px-2 py-1 active:scale-95 transition-all"
+          key={e.client_id}
+          onPointerDown={() => voidEvent(e.client_id)}
           title="Tap to void"
+          className="flex-shrink-0 flex items-center gap-1 bg-slate-700 hover:bg-red-700 text-white text-xs
+            rounded-lg px-2 py-1 active:scale-95 transition-all"
         >
-          <span className="font-medium">{event.event_type.replace('_', ' ')}</span>
-          {event.sub_type && <span className="text-slate-300">· {event.sub_type.replace(/_/g, ' ')}</span>}
-          <span className="text-slate-400">{getPlayerLabel(event.player_id)}</span>
+          <span className="font-medium">{e.event_type.replace(/_/g, ' ')}</span>
+          {e.sub_type && <span className="text-slate-300">· {e.sub_type.replace(/_/g, ' ')}</span>}
+          <span className="text-slate-400">{playerLabel(e.player_id)}</span>
         </button>
       ))}
     </div>
   )
 }
 
-// ─── Suspension tracker ───────────────────────────────────────────────────────
+// ─── FlowPanel ────────────────────────────────────────────────────────────────
 
-function SuspensionTracker() {
-  const suspensions = useMatchStore(useShallow(selectActiveSuspensions))
-  const trackedPlayers = useMatchStore(s => s.trackedPlayers)
-  const periodStartedAt = useMatchStore(s => s.periodStartedAt)
-
-  if (suspensions.length === 0) return null
-
-  const nowSecs = periodStartedAt
-    ? Math.floor((Date.now() - new Date(periodStartedAt).getTime()) / 1000)
-    : 0
-
-  return (
-    <div className="flex gap-2 px-2 py-1 bg-red-950 overflow-x-auto">
-      {suspensions.map(susp => {
-        const player = trackedPlayers.find(p => p.id === susp.player_id)
-        const remaining = susp.endsAt !== null ? Math.max(0, (susp.endsAt as number) - nowSecs) : null
-        const mins = remaining !== null ? Math.floor(remaining / 60) : null
-        const secs = remaining !== null ? remaining % 60 : null
-        return (
-          <div key={susp.client_id} className="flex-shrink-0 flex items-center gap-1 text-xs text-red-200">
-            <span className="font-bold">#{player?.jersey_number ?? '?'}</span>
-            {remaining !== null && (
-              <span className="tabular-nums">
-                {mins}:{String(secs).padStart(2, '0')}
-              </span>
-            )}
-          </div>
-        )
-      })}
-    </div>
-  )
-}
-
-// ─── Main EventLogger ─────────────────────────────────────────────────────────
-
-function FinalizeButton() {
+function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) => void }) {
   const match = useMatchStore(s => s.match)
-  const [confirming, setConfirming] = useState(false)
-  const [loading, setLoading] = useState(false)
-  const setMatchFinalized = useMatchStore(s => s.setMatchFinalized)
+  const trackedPlayers = useMatchStore(s => s.trackedPlayers)
+  const lineupPlayerIds = useMatchStore(s => s.currentLineupPlayerIds)
+  const commitEvent = useMatchStore(s => s.commitEvent)
+  const logSubstitution = useMatchStore(s => s.logSubstitution)
 
-  if (!match) return null
+  const onCourt = trackedPlayers.filter(p => lineupPlayerIds.includes(p.id))
+  const onBench  = trackedPlayers.filter(p => !lineupPlayerIds.includes(p.id))
 
-  if (confirming) {
+  const opponentTeamId = match
+    ? (match.tracked_team_id === match.home_team_id ? match.away_team_id : match.home_team_id)
+    : ''
+
+  function done(o: Partial<EventInsert>) {
+    commitEvent(o)
+    setFlow({ s: 'idle' })
+  }
+
+  function playerLabel(pid: string) {
+    const p = trackedPlayers.find(p => p.id === pid)
+    return p ? `#${p.jersey_number} ${p.last_name}` : '?'
+  }
+
+  // ── idle ─────────────────────────────────────────────────────────────────────
+  if (flow.s === 'idle') {
     return (
-      <div className="flex gap-1 items-center">
-        <span className="text-xs text-gray-600">End match?</span>
-        <button
-          onPointerDown={async () => {
-            setLoading(true)
-            try {
-              await finalizeMatch(match.id, match.tracked_team_id, match.home_team_id)
-              setMatchFinalized()
-            } finally {
-              setLoading(false)
-            }
-          }}
-          className="px-2 py-1 text-xs rounded bg-green-600 text-white font-semibold active:scale-95"
-          disabled={loading}
-        >
-          {loading ? '…' : 'Yes'}
-        </button>
-        <button
-          onPointerDown={() => setConfirming(false)}
-          className="px-2 py-1 text-xs rounded bg-gray-200 text-gray-700 active:scale-95"
-        >
-          No
-        </button>
+      <div className="flex items-center justify-center h-full text-slate-400 text-sm select-none">
+        ← Veldu leikmann til að hefja skráningu
       </div>
     )
   }
 
-  return (
-    <button
-      onPointerDown={() => setConfirming(true)}
-      className="px-3 py-1 text-xs rounded bg-slate-700 text-white font-semibold active:scale-95 transition-transform"
-    >
-      End match
-    </button>
-  )
+  // ── category ─────────────────────────────────────────────────────────────────
+  if (flow.s === 'category') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Veldu flokk</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          <Btn color="bg-green-600"  label="Sókn"      size="lg" onTap={() => setFlow({ s: 'atk_sub', pid, tid })} />
+          <Btn color="bg-blue-600"   label="Vörn"       size="lg" onTap={() => setFlow({ s: 'def_sub', pid, tid })} />
+          <Btn color="bg-purple-600" label="Markmaður"  size="lg" onTap={() => setFlow({ s: 'gk_sub',  pid, tid })} />
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // ATTACK
+  // ════════════════════════════════════════════════════════════════════════════
+
+  if (flow.s === 'atk_sub') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Sókn → veldu aðgerð</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-green-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'atk_shot_range', pid, tid })} />
+          <Btn color="bg-green-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'atk_other', pid, tid })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_range') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Hvar kom skotið frá?</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {RANGES.map(({ v, label }) => (
+            <Btn key={v} color="bg-green-600" label={label} size="lg"
+              onTap={() => setFlow({ s: 'atk_shot_phase', pid, tid, range: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_phase') {
+    const { pid, tid, range } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range]]} />
+        <StepTitle>Tegund sóknar</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {PHASES.map(({ v, label }) => (
+            <Btn key={v} color="bg-green-600" label={label}
+              onTap={() => setFlow({ s: 'atk_shot_numerical', pid, tid, range, phase: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_numerical') {
+    const { pid, tid, range, phase } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase]]} />
+        <StepTitle>Leiktala</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          {ATK_NUMERICALS.map(({ v, label }) => (
+            <Btn key={v} color="bg-green-600" label={label}
+              onTap={() => setFlow({ s: 'atk_shot_assist', pid, tid, range, phase, numerical: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_assist') {
+    const { pid, tid, range, phase, numerical } = flow
+    const isPenalty = range === 'penalty'
+    const others = trackedPlayers.filter(p => p.id !== pid)
+
+    if (isPenalty) {
+      return (
+        <div className="p-4">
+          <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+          <StepTitle>Vítasending — hverjir sendi?</StepTitle>
+          <PlayerPickerGrid
+            players={others}
+            noneLabel="Enginn"
+            onPick={(id) => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, phase, numerical, vitasendingId: id })}
+            onNone={() => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, phase, numerical, vitasendingId: null })}
+          />
+        </div>
+      )
+    }
+
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Stoðsending / sköpuð færi</StepTitle>
+        <PlayerPickerGrid
+          players={others}
+          noneLabel="Enginn"
+          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, range, phase, numerical, assistId: id, vitasendingId: null, fiskadVitiId: null })}
+          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, range, phase, numerical, assistId: null, vitasendingId: null, fiskadVitiId: null })}
+        />
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_fiskad_viti') {
+    const { pid, tid, phase, numerical, vitasendingId } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={['Víti', PHASE_LABEL[phase], NUMERICAL_LABEL[numerical], vitasendingId ? `Vítasending: ${playerLabel(vitasendingId)}` : undefined]} />
+        <StepTitle>Fiskað víti — hverjum var gert víti á?</StepTitle>
+        <PlayerPickerGrid
+          players={trackedPlayers}
+          noneLabel="Enginn"
+          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: id })}
+          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: null })}
+        />
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_zone') {
+    const { pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId } = flow
+
+    function commitOffTarget(subType: 'blocked' | 'wide' | 'post') {
+      const ctx: Record<string, unknown> = {}
+      if (assistId) ctx.assist_player_id = assistId
+      else if (vitasendingId) ctx.assist_player_id = vitasendingId
+      done({
+        event_type: 'SHOT',
+        player_id: pid,
+        team_id: tid,
+        sub_type: subType,
+        shot_range: range,
+        phase_type: phase,
+        numerical_state: numerical,
+        zone: null,
+        context: ctx,
+      })
+    }
+
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Hvar fór skotið?</StepTitle>
+        <ZoneGrid
+          onZone={(z) => setFlow({ s: 'atk_shot_outcome', pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone: z })}
+          onBlocked={() => commitOffTarget('blocked')}
+          onWide={() => commitOffTarget('wide')}
+          onPost={() => commitOffTarget('post')}
+        />
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_outcome') {
+    const { pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone } = flow
+
+    function commitShot(subType: 'goal' | 'saved') {
+      const ctx: Record<string, unknown> = {}
+      if (assistId) ctx.assist_player_id = assistId
+      else if (vitasendingId) ctx.assist_player_id = vitasendingId
+      commitEvent({
+        event_type: 'SHOT',
+        player_id: pid,
+        team_id: tid,
+        sub_type: subType,
+        shot_range: range,
+        phase_type: phase,
+        numerical_state: numerical,
+        zone,
+        context: ctx,
+      })
+      // Penalty: also log the foul so fiskað víti is captured
+      if (range === 'penalty' && fiskadVitiId) {
+        commitEvent({
+          event_type: 'FOUL',
+          player_id: null,
+          team_id: opponentTeamId,
+          sub_type: '7m_awarded',
+          context: { fouled_player_id: fiskadVitiId },
+        })
+      }
+      setFlow({ s: 'idle' })
+    }
+
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Niðurstaða skots</StepTitle>
+        <div className="grid grid-cols-2 gap-4">
+          <Btn color="bg-green-600" label="Markmið" size="lg" onTap={() => commitShot('goal')} />
+          <Btn color="bg-slate-600" label="Varin"    size="lg" onTap={() => commitShot('saved')} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_other') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Annað — sókn</StepTitle>
+        <div className="grid grid-cols-1 gap-3">
+          <Btn color="bg-green-700" label="Tapaður bolti"  onTap={() => setFlow({ s: 'atk_turnover', pid, tid })} />
+          <Btn color="bg-green-700" label="Sóknarfrákast"
+            onTap={() => done({ event_type: 'ATTACKING_ACTION', player_id: pid, team_id: tid, sub_type: 'offensive_rebound' })} />
+          <Btn color="bg-green-700" label="Fengnar 2 mín"
+            onTap={() => done({ event_type: 'ATTACKING_ACTION', player_id: pid, team_id: tid, sub_type: 'drew_suspension' })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_turnover') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Tapaður bolti — tegund</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-orange-600" label="Sóknarbrot"      onTap={() => done({ event_type: 'TURNOVER', player_id: pid, team_id: tid, sub_type: 'offensive_foul' })} />
+          <Btn color="bg-orange-600" label="Sendingarmistök" onTap={() => done({ event_type: 'TURNOVER', player_id: pid, team_id: tid, sub_type: 'bad_pass' })} />
+          <Btn color="bg-orange-600" label="Töf"             onTap={() => done({ event_type: 'TURNOVER', player_id: pid, team_id: tid, sub_type: 'delay' })} />
+          <Btn color="bg-orange-500" label="Annað"           onTap={() => done({ event_type: 'TURNOVER', player_id: pid, team_id: tid, sub_type: 'other' })} />
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // GOALKEEPING
+  // ════════════════════════════════════════════════════════════════════════════
+
+  if (flow.s === 'gk_sub') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Markmaður → veldu aðgerð</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-purple-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'gk_shot_range', pid, tid })} />
+          <Btn color="bg-purple-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'gk_other', pid, tid })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_range') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Hvar kom skotið frá?</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {RANGES.map(({ v, label }) => (
+            <Btn key={v} color="bg-purple-600" label={label} size="lg"
+              onTap={() => setFlow({ s: 'gk_shot_phase', pid, tid, range: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_phase') {
+    const { pid, tid, range } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range]]} />
+        <StepTitle>Tegund sóknar</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {PHASES.map(({ v, label }) => (
+            <Btn key={v} color="bg-purple-600" label={label}
+              onTap={() => setFlow({ s: 'gk_shot_numerical', pid, tid, range, phase: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_numerical') {
+    const { pid, tid, range, phase } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase]]} />
+        <StepTitle>Leiktala</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          {GK_NUMERICALS.map(({ v, label }) => (
+            <Btn key={v} color="bg-purple-600" label={label}
+              onTap={() => setFlow({ s: 'gk_shot_zone', pid, tid, range, phase, numerical: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_zone') {
+    const { pid, tid, range, phase, numerical } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Hvert fór skotið?</StepTitle>
+        <ZoneGrid
+          onZone={(z) => setFlow({ s: 'gk_shot_outcome', pid, tid, range, phase, numerical, zone: z })}
+          onBlocked={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
+          onWide={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
+          onPost={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
+        />
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_outcome') {
+    const { pid, tid, range, phase, numerical, zone } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Niðurstaða</StepTitle>
+        <div className="grid grid-cols-2 gap-4">
+          <Btn color="bg-purple-600" label="Varin"        size="lg"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
+          <Btn color="bg-red-600"    label="Markmið gegn" size="lg"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'goal_conceded', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_other') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Annað — markmaður</StepTitle>
+        <div className="grid grid-cols-1 gap-3">
+          <Btn color="bg-purple-600" label="Tóm fasi"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'empty_phase' })} />
+          <Btn color="bg-purple-600" label="Jákvæð viðbrögð"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'positive_response' })} />
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // DEFENSE
+  // ════════════════════════════════════════════════════════════════════════════
+
+  if (flow.s === 'def_sub') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Vörn → veldu flokk</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          <Btn color="bg-blue-600"  label="Brot"    size="lg" onTap={() => setFlow({ s: 'def_brot_type', pid, tid })} />
+          <Btn color="bg-blue-600"  label="Annað"   size="lg" onTap={() => setFlow({ s: 'def_other', pid, tid })} />
+          <Btn color="bg-blue-600"  label="Refsing" size="lg" onTap={() => setFlow({ s: 'def_refsing', pid, tid })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'def_brot_type') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Brot — tegund</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-blue-600" label="Fríkast" size="lg"
+            onTap={() => setFlow({ s: 'def_brot_card', pid, tid, foulSub: 'attacking_foul' })} />
+          <Btn color="bg-blue-600" label="Víti"    size="lg"
+            onTap={() => setFlow({ s: 'def_brot_card', pid, tid, foulSub: '7m_awarded' })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'def_brot_card') {
+    const { pid, tid, foulSub } = flow
+
+    function commitBrot(card: '2min' | 'yellow_card' | 'red_card' | null) {
+      commitEvent({ event_type: 'FOUL', player_id: pid, team_id: tid, sub_type: foulSub })
+      if (card) {
+        commitEvent({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: card })
+      }
+      setFlow({ s: 'idle' })
+    }
+
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[foulSub === 'attacking_foul' ? 'Fríkast' : 'Víti']} />
+        <StepTitle>Refsing</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-yellow-500" label="Gult spjald" onTap={() => commitBrot('yellow_card')} />
+          <Btn color="bg-red-600"    label="2 mín"       onTap={() => commitBrot('2min')} />
+          <Btn color="bg-red-800"    label="Rautt spjald" onTap={() => commitBrot('red_card')} />
+          <Btn color="bg-gray-400"   label="Ekkert"       onTap={() => commitBrot(null)} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'def_other') {
+    const { pid, tid } = flow
+    const defAction = (sub: string) =>
+      done({ event_type: 'DEFENSIVE_ACTION', player_id: pid, team_id: tid, sub_type: sub as never })
+
+    return (
+      <div className="p-4">
+        <StepTitle>Annað — vörn</StepTitle>
+        <div className="grid grid-cols-2 gap-3">
+          <Btn color="bg-blue-600" label="Árás 1 á 1"      onTap={() => setFlow({ s: 'def_duel_outcome', pid, tid })} />
+          <Btn color="bg-blue-600" label="Hár Kontakt"      onTap={() => defAction('high_contact')} />
+          <Btn color="bg-blue-600" label="Stolinn bolti"    onTap={() => defAction('interception')} />
+          <Btn color="bg-blue-600" label="Blokk"            onTap={() => defAction('block')} />
+          <Btn color="bg-blue-600" label="Frákast"          onTap={() => defAction('rebound')} />
+          <Btn color="bg-blue-600" label="Fiskuð sóknarbrot" onTap={() => defAction('drew_offensive_foul')} />
+          <Btn color="bg-blue-600" label="Værukærð"         onTap={() => defAction('protest')} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'def_duel_outcome') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Árás 1 á 1 — niðurstaða</StepTitle>
+        <div className="grid grid-cols-2 gap-4">
+          <Btn color="bg-blue-600" label="Vann"   size="lg"
+            onTap={() => done({ event_type: 'DEFENSIVE_ACTION', player_id: pid, team_id: tid, sub_type: 'duel_won' })} />
+          <Btn color="bg-blue-400" label="Tapaði" size="lg"
+            onTap={() => done({ event_type: 'DEFENSIVE_ACTION', player_id: pid, team_id: tid, sub_type: 'duel_lost' })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'def_refsing') {
+    const { pid, tid } = flow
+    return (
+      <div className="p-4">
+        <StepTitle>Refsing</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          <Btn color="bg-yellow-500" label="Gult spjald"
+            onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'yellow_card' })} />
+          <Btn color="bg-red-600"    label="2 mín"
+            onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: '2min' })} />
+          <Btn color="bg-red-800"    label="Rautt spjald"
+            onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'red_card' })} />
+        </div>
+      </div>
+    )
+  }
+
+  // ════════════════════════════════════════════════════════════════════════════
+  // SUBSTITUTION
+  // ════════════════════════════════════════════════════════════════════════════
+
+  if (flow.s === 'sub_pick_in') {
+    const bench = onBench.length > 0 ? onBench : trackedPlayers
+    return (
+      <div className="p-4">
+        <StepTitle>Skipti — kemur INN</StepTitle>
+        <PlayerPickerGrid
+          players={bench}
+          noneLabel="Hætta við"
+          onPick={(id) => setFlow({ s: 'sub_pick_out', playerInId: id })}
+          onNone={() => setFlow({ s: 'idle' })}
+        />
+      </div>
+    )
+  }
+
+  if (flow.s === 'sub_pick_out') {
+    const { playerInId } = flow
+    const court = onCourt.length > 0 ? onCourt : trackedPlayers.filter(p => p.id !== playerInId)
+    return (
+      <div className="p-4">
+        <StepTitle>Skipti — fer ÚT</StepTitle>
+        <PlayerPickerGrid
+          players={court}
+          noneLabel="Hætta við"
+          onPick={async (id) => {
+            await logSubstitution(playerInId, id)
+            setFlow({ s: 'idle' })
+          }}
+          onNone={() => setFlow({ s: 'idle' })}
+        />
+      </div>
+    )
+  }
+
+  return null
 }
+
+// ─── EventLogger ─────────────────────────────────────────────────────────────
 
 export function EventLogger() {
   const trackedPlayers = useMatchStore(s => s.trackedPlayers)
   const opponentPlayers = useMatchStore(s => s.opponentPlayers)
-  const inputStep = useMatchStore(s => s.inputStep)
-  const selectPlayer = useMatchStore(s => s.selectPlayer)
-  const selectEventType = useMatchStore(s => s.selectEventType)
-  const selectSubType = useMatchStore(s => s.selectSubType)
-  const selectContext = useMatchStore(s => s.selectContext)
-  const commitWithZone = useMatchStore(s => s.commitWithZone)
-  const cancelInput = useMatchStore(s => s.cancelInput)
-  const undoLast = useMatchStore(s => s.undoLast)
-  const match = useMatchStore(s => s.match)
+  const lineupPlayerIds = useMatchStore(s => s.currentLineupPlayerIds)
+  const currentLineupId = useMatchStore(s => s.currentLineupId)
+  const initLineup = useMatchStore(s => s.initLineup)
+  const [flow, setFlow] = useState<FlowStep>({ s: 'idle' })
 
-  const selectedPlayerId = inputStep.step !== 'idle' && 'playerId' in inputStep
-    ? inputStep.playerId
-    : null
+  // Create the initial court_lineups row from starters on first mount
+  useEffect(() => {
+    if (currentLineupId === null && lineupPlayerIds.length > 0) {
+      void initLineup(lineupPlayerIds)
+    }
+  // Only run once on mount
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const selectedPid = 'pid' in flow ? flow.pid : null
+
+  function selectPlayer(pid: string, tid: string) {
+    setFlow({ s: 'category', pid, tid })
+  }
 
   return (
-    <div className="flex flex-col h-screen bg-gray-100 select-none">
+    <div className="flex flex-col h-full bg-gray-100 select-none overflow-hidden">
       <ScoreBar />
-      <SuspensionTracker />
-
-      {/* Undo bar */}
-      <div className="flex items-center justify-between px-4 py-1 bg-slate-100 border-b border-slate-200">
-        <span className="text-xs text-slate-500">
-          {inputStep.step === 'idle' ? 'Select player' : `Step: ${inputStep.step.replace(/_/g, ' ')}`}
-        </span>
-        <div className="flex gap-2">
-          {inputStep.step !== 'idle' && (
-            <button
-              onPointerDown={cancelInput}
-              className="px-3 py-1 text-xs rounded bg-gray-300 text-gray-700 active:scale-95 transition-transform"
-            >
-              Cancel
-            </button>
-          )}
-          <button
-            onPointerDown={undoLast}
-            className="px-3 py-1 text-xs rounded bg-red-100 text-red-700 font-semibold active:scale-95 transition-transform"
-          >
-            UNDO
-          </button>
-          <FinalizeButton />
-        </div>
-      </div>
+      <TopBar flow={flow} setFlow={setFlow} />
 
       <div className="flex flex-1 overflow-hidden">
-        {/* Left panel: roster */}
-        <div className="w-[200px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-2 gap-1 shrink-0">
-          <p className="text-xs font-semibold text-slate-500 px-1 pt-1">TRACKED</p>
-          {trackedPlayers.map(p => (
-            <PlayerTile
+        {/* Left: player panel */}
+        <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-2 gap-1 shrink-0">
+          <p className="text-xs font-semibold text-slate-500 px-1 pt-1 uppercase tracking-wide">Á velli</p>
+          {trackedPlayers.filter(p => lineupPlayerIds.includes(p.id)).map(p => (
+            <button
               key={p.id}
-              playerId={p.id}
-              name={p.last_name}
-              jersey={p.jersey_number}
-              isSelected={selectedPlayerId === p.id}
-              onSelect={() => selectPlayer(p.id, p.team_id)}
-            />
+              onPointerDown={() => selectPlayer(p.id, p.team_id)}
+              className={`
+                flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
+                text-sm font-semibold select-none active:scale-95 transition-transform
+                ${selectedPid === p.id
+                  ? 'bg-blue-600 border-blue-700 text-white'
+                  : 'bg-white border-gray-300 text-gray-800 hover:border-blue-400'
+                }
+              `}
+            >
+              <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+              <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+            </button>
           ))}
+
+          {trackedPlayers.some(p => !lineupPlayerIds.includes(p.id)) && (
+            <p className="text-xs font-semibold text-slate-400 px-1 pt-2 uppercase tracking-wide">Á bekk</p>
+          )}
+          {trackedPlayers.filter(p => !lineupPlayerIds.includes(p.id)).map(p => (
+            <button
+              key={p.id}
+              onPointerDown={() => selectPlayer(p.id, p.team_id)}
+              className={`
+                flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
+                text-sm font-semibold select-none active:scale-95 transition-transform
+                ${selectedPid === p.id
+                  ? 'bg-blue-600 border-blue-700 text-white'
+                  : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-blue-300'
+                }
+              `}
+            >
+              <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+              <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+            </button>
+          ))}
+
           {opponentPlayers.length > 0 && (
             <>
-              <p className="text-xs font-semibold text-slate-500 px-1 pt-2">OPPONENT</p>
+              <p className="text-xs font-semibold text-slate-400 px-1 pt-2 uppercase tracking-wide">Andstæðingar</p>
               {opponentPlayers.map(p => (
-                <PlayerTile
+                <button
                   key={p.id}
-                  playerId={p.id}
-                  name={p.last_name}
-                  jersey={p.jersey_number}
-                  isSelected={selectedPlayerId === p.id}
-                  onSelect={() => selectPlayer(p.id, p.team_id)}
-                />
+                  onPointerDown={() => selectPlayer(p.id, p.team_id)}
+                  className={`
+                    flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
+                    text-sm font-semibold select-none active:scale-95 transition-transform
+                    ${selectedPid === p.id
+                      ? 'bg-orange-500 border-orange-600 text-white'
+                      : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-orange-300'
+                    }
+                  `}
+                >
+                  <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+                  <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+                </button>
               ))}
             </>
           )}
-          {/* Unattributed option for team events */}
-          {match && (
-            <PlayerTile
-              playerId="__team__"
-              name="Team"
-              jersey={null}
-              isSelected={selectedPlayerId === '__team__'}
-              onSelect={() => selectPlayer('__team__', match.tracked_team_id)}
-            />
-          )}
         </div>
 
-        {/* Right panel: action buttons */}
-        <div className="flex-1 p-4 overflow-y-auto">
-          {inputStep.step === 'idle' && (
-            <p className="text-gray-400 text-sm mt-4">← Select a player to log an event</p>
-          )}
-
-          {inputStep.step === 'player_selected' && (
-            <div className="grid grid-cols-2 gap-3">
-              {EVENT_TYPES.map(({ type, label, color }) => (
-                <ActionButton
-                  key={type}
-                  label={label}
-                  color={color}
-                  onSelect={() => selectEventType(type)}
-                />
-              ))}
-            </div>
-          )}
-
-          {inputStep.step === 'event_type_selected' && (
-            <div className="grid grid-cols-2 gap-3">
-              {SUB_TYPES[inputStep.eventType].map(({ sub, label }) => (
-                <ActionButton
-                  key={sub}
-                  label={label}
-                  color="bg-slate-700 hover:bg-slate-800"
-                  onSelect={() => selectSubType(sub)}
-                />
-              ))}
-            </div>
-          )}
-
-          {inputStep.step === 'sub_type_selected' && inputStep.eventType === 'SHOT' && (
-            <div className="flex flex-col gap-4">
-              {/* Situation */}
-              <div>
-                <p className="text-sm font-medium text-gray-600 mb-2">Situation (optional)</p>
-                <div className="flex flex-wrap gap-2">
-                  {SITUATIONS.map(({ value, label }) => (
-                    <button
-                      key={value}
-                      onPointerDown={() => selectContext(value)}
-                      className="px-3 py-2 rounded border-2 border-gray-300 bg-white text-sm font-medium hover:border-blue-400 active:scale-95 transition-transform"
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  <button
-                    onPointerDown={() => selectContext(null)}
-                    className="px-3 py-2 rounded border-2 border-gray-200 bg-gray-50 text-sm text-gray-400 active:scale-95 transition-transform"
-                  >
-                    Skip
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {inputStep.step === 'sub_type_selected' && inputStep.eventType !== 'SHOT' && (
-            // Non-shot events commit immediately after sub_type — no context needed
-            <div className="flex items-center justify-center h-32">
-              <button
-                onPointerDown={() => selectContext(null)}
-                className="px-8 py-4 bg-green-600 text-white text-lg font-bold rounded-xl active:scale-95 transition-transform"
-              >
-                Confirm
-              </button>
-            </div>
-          )}
+        {/* Right: flow panel */}
+        <div className="flex-1 overflow-y-auto">
+          <FlowPanel flow={flow} setFlow={setFlow} />
         </div>
       </div>
-
-      {/* Zone picker overlay for shots after situation */}
-      {inputStep.step === 'context_selected' && inputStep.eventType === 'SHOT' && (
-        <div className="absolute inset-0 bg-black/50 flex items-center justify-center z-10">
-          <div className="bg-white rounded-xl p-4 shadow-xl">
-            <ZonePicker onSelect={commitWithZone} />
-          </div>
-        </div>
-      )}
 
       <RecentEventsFeed />
     </div>
   )
 }
-
-// Allow "team" player selection to map to null player_id
-// This is handled in the store: player_id = '__team__' → null

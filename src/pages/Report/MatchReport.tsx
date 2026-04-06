@@ -1,277 +1,314 @@
-import { useQuery } from '@tanstack/react-query'
-import { getMatchReportData } from '@/lib/supabase/reportQueries'
-import { Card, Spinner } from '@/components/ui'
-import type { Match, Team, Player } from '@/lib/db/schema'
-import type { MatchReportData, PlayerShotRow, PlayerTurnoverRow, PlayerSuspensionRow } from '@/lib/supabase/reportQueries'
+import { useMemo } from 'react'
+import { useShallow } from 'zustand/react/shallow'
+import { useMatchStore, selectActiveEvents, selectTrackedScore, selectOpponentScore } from '@/store/matchStore'
+import {
+  computeAttack, computeDefense, computeGK,
+  sumAttack, sumDefense, sumGK,
+  pct, v,
+  type AttackRow, type DefenseRow, type GKRow,
+} from '@/lib/stats/matchStats'
+import type { Player } from '@/lib/db/schema'
 
 interface Props {
-  match: Match
-  trackedTeam: Team
-  opponentTeam: Team
   onNewMatch: () => void
+  onDashboard: () => void
 }
 
-export function MatchReport({ match, trackedTeam, opponentTeam, onNewMatch }: Props) {
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['report', match.id],
-    queryFn: () => getMatchReportData(match.id, match.tracked_team_id),
-  })
+export function MatchReport({ onNewMatch, onDashboard }: Props) {
+  const match = useMatchStore(s => s.match)
+  const homeTeam = useMatchStore(s => s.homeTeam)
+  const awayTeam = useMatchStore(s => s.awayTeam)
+  const trackedPlayers = useMatchStore(useShallow(s => s.trackedPlayers))
+  const events = useMatchStore(useShallow(selectActiveEvents))
+  const trackedScore = useMatchStore(selectTrackedScore)
+  const opponentScore = useMatchStore(selectOpponentScore)
 
-  const isHome = match.home_team_id === match.tracked_team_id
-  const trackedScore = isHome ? match.home_score : match.away_score
-  const opponentScore = isHome ? match.away_score : match.home_score
+  const trackedTeamId = match?.tracked_team_id ?? ''
+  const isTrackedHome = match?.home_team_id === match?.tracked_team_id
+  const goalkeepers = trackedPlayers.filter(p => p.position === 'goalkeeper')
 
-  const matchDate = match.match_date
-    ? new Date(match.match_date).toLocaleDateString('en-GB', {
-        weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-      })
+  const attackStats = useMemo(() => computeAttack(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
+  const defenseStats = useMemo(() => computeDefense(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
+  const gkStats = useMemo(() => computeGK(events, goalkeepers, trackedTeamId), [events, goalkeepers, trackedTeamId])
+
+  const atkTotals = useMemo(() => sumAttack(attackStats), [attackStats])
+  const defTotals = useMemo(() => sumDefense(defenseStats), [defenseStats])
+
+  const trackedTeam = isTrackedHome ? homeTeam : awayTeam
+  const opponentTeam = isTrackedHome ? awayTeam : homeTeam
+  const displayHome = isTrackedHome ? trackedScore : opponentScore
+  const displayAway = isTrackedHome ? opponentScore : trackedScore
+
+  const matchDate = match?.match_date
+    ? new Date(match.match_date).toLocaleDateString('is-IS', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
     : null
+
+  const shotEff = atkTotals.shots > 0 ? Math.round(atkTotals.goals / atkTotals.shots * 100) : 0
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between print:bg-white print:text-black">
-        <h1 className="text-lg font-bold">Match Report</h1>
-        <div className="flex gap-3 print:hidden">
-          <button
-            onClick={() => window.print()}
-            className="px-3 py-1.5 text-sm bg-slate-700 rounded-lg hover:bg-slate-600"
-          >
-            Print / Save PDF
+      <div className="bg-slate-900 text-white px-4 py-3 flex items-center justify-between print:bg-white print:text-black shrink-0">
+        <h1 className="text-base font-bold">Leiksskýrsla</h1>
+        <div className="flex gap-2 print:hidden">
+          <button onClick={() => window.print()}
+            className="px-3 py-1.5 text-sm bg-slate-700 rounded-lg hover:bg-slate-600">
+            Prenta / PDF
           </button>
-          <button
-            onClick={onNewMatch}
-            className="px-3 py-1.5 text-sm bg-blue-600 rounded-lg hover:bg-blue-700"
-          >
-            New match
+          <button onClick={onDashboard}
+            className="px-3 py-1.5 text-sm bg-blue-600 rounded-lg hover:bg-blue-700">
+            Tölur á tímabili
+          </button>
+          <button onClick={onNewMatch}
+            className="px-3 py-1.5 text-sm bg-green-600 rounded-lg hover:bg-green-700">
+            Nýr leikur
           </button>
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-6">
+
         {/* Score card */}
-        <Card className="p-6">
+        <div className="bg-white rounded-xl shadow-sm p-6">
           <div className="flex items-center justify-center gap-6">
             <div className="text-center flex-1">
-              <p className="text-2xl font-bold">{trackedTeam.name}</p>
-              <p className="text-sm text-gray-500">{isHome ? 'Home' : 'Away'}</p>
+              <p className="text-xl font-bold">{trackedTeam?.name}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{isTrackedHome ? 'Heima' : 'Gestir'}</p>
             </div>
             <div className="text-center">
-              <p className="text-5xl font-bold tabular-nums">
-                {trackedScore ?? '–'} – {opponentScore ?? '–'}
-              </p>
-              {matchDate && <p className="text-sm text-gray-500 mt-1">{matchDate}</p>}
-              {match.venue && <p className="text-sm text-gray-500">{match.venue}</p>}
+              <p className="text-5xl font-bold tabular-nums">{displayHome} – {displayAway}</p>
+              {matchDate && <p className="text-xs text-gray-400 mt-1">{matchDate}</p>}
+              {match?.venue && <p className="text-xs text-gray-400">{match.venue}</p>}
             </div>
             <div className="text-center flex-1">
-              <p className="text-2xl font-bold">{opponentTeam.name}</p>
-              <p className="text-sm text-gray-500">{isHome ? 'Away' : 'Home'}</p>
+              <p className="text-xl font-bold">{opponentTeam?.name}</p>
+              <p className="text-xs text-gray-400 mt-0.5">{isTrackedHome ? 'Gestir' : 'Heima'}</p>
             </div>
           </div>
-        </Card>
+        </div>
 
-        {isLoading && (
-          <div className="flex justify-center py-12"><Spinner /></div>
-        )}
+        {/* Team summary */}
+        <div className="bg-white rounded-xl shadow-sm p-4">
+          <h2 className="font-semibold text-gray-800 mb-3 text-sm">Samantekt liðs</h2>
+          <div className="grid grid-cols-4 gap-3 sm:grid-cols-8">
+            <StatBox label="Mörk" value={atkTotals.goals} highlight />
+            <StatBox label="Skot" value={atkTotals.shots} />
+            <StatBox label="Skotnýting" value={`${shotEff}%`} highlight={shotEff >= 50} />
+            <StatBox label="Tapað" value={atkTotals.turnovers} />
+            <StatBox label="2 mín" value={defTotals.suspensions2min} />
+            <StatBox label="Hraðaupp." value={`${atkTotals.fbGoals}/${atkTotals.fbShots}`} />
+            <StatBox label="Víti" value={`${atkTotals.penGoals}/${atkTotals.penShots}`} />
+            <StatBox label="Stoðsend." value={atkTotals.assists} />
+          </div>
+        </div>
 
-        {error && (
-          <Card className="p-4">
-            <p className="text-red-600 text-sm">Failed to load stats: {(error as Error).message}</p>
-          </Card>
-        )}
+        {/* Attack table */}
+        <ReportSection title="Sókn">
+          <AttackReportTable rows={attackStats} totals={atkTotals} />
+        </ReportSection>
 
-        {data && (
-          <>
-            <TeamSummarySection data={data} trackedTeamId={match.tracked_team_id} />
-            <PlayerStatsSection data={data} trackedTeamId={match.tracked_team_id} />
-            <GoalkeeperSection data={data} />
-          </>
+        {/* Defense table */}
+        <ReportSection title="Vörn">
+          <DefenseReportTable rows={defenseStats} totals={defTotals} />
+        </ReportSection>
+
+        {/* GK section */}
+        {gkStats.length > 0 && (
+          <ReportSection title="Markvörður">
+            <GKReportSection rows={gkStats} />
+          </ReportSection>
         )}
       </div>
     </div>
   )
 }
 
-// ─── Team summary ─────────────────────────────────────────────────────────────
-
-function TeamSummarySection({ data, trackedTeamId }: { data: MatchReportData; trackedTeamId: string }) {
-  const totalGoals = data.shots.reduce((s, r) => s + r.goals, 0)
-  const totalShots = data.shots.reduce((s, r) => s + r.shots_attempted, 0)
-  const shotEff = totalShots > 0 ? Math.round(totalGoals / totalShots * 100) : 0
-  const totalTurnovers = data.turnovers.reduce((s, r) => s + r.total_turnovers, 0)
-  const total2min = data.suspensions.reduce((s, r) => s + r.suspensions_2min, 0)
-  const fb = data.fastBreak[0]
-  const sevenMGoals = data.sevenM.reduce((s, r) => s + r.goals_7m, 0)
-  const sevenMAttempts = data.sevenM.reduce((s, r) => s + r.attempts_7m, 0)
-  const sevenMEff = sevenMAttempts > 0 ? Math.round(sevenMGoals / sevenMAttempts * 100) : 0
-
-  void trackedTeamId
-
-  return (
-    <Card className="p-4">
-      <h2 className="font-semibold text-gray-800 mb-3">Team summary</h2>
-      <div className="grid grid-cols-3 gap-3 sm:grid-cols-6">
-        <StatBox label="Goals" value={totalGoals} />
-        <StatBox label="Shots" value={totalShots} />
-        <StatBox label="Shot %" value={`${shotEff}%`} highlight={shotEff >= 50} />
-        <StatBox label="Turnovers" value={totalTurnovers} />
-        <StatBox label="2-min susp." value={total2min} />
-        {fb && <StatBox label="Fast break" value={`${fb.fast_break_goals}/${fb.fast_break_attempts}`} />}
-        {sevenMAttempts > 0 && <StatBox label="7m %" value={`${sevenMEff}%`} />}
-      </div>
-    </Card>
-  )
-}
+// ─── Shared primitives ────────────────────────────────────────────────────────
 
 function StatBox({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) {
   return (
-    <div className={`rounded-lg p-3 text-center ${highlight ? 'bg-green-50' : 'bg-gray-50'}`}>
-      <p className={`text-2xl font-bold ${highlight ? 'text-green-700' : 'text-gray-900'}`}>{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
+    <div className={`rounded-lg p-2.5 text-center ${highlight ? 'bg-green-50' : 'bg-gray-50'}`}>
+      <p className={`text-xl font-bold ${highlight ? 'text-green-700' : 'text-gray-900'}`}>{value}</p>
+      <p className="text-[10px] text-gray-500 mt-0.5">{label}</p>
     </div>
   )
 }
 
-// ─── Player stats table ───────────────────────────────────────────────────────
-
-function PlayerStatsSection({ data, trackedTeamId }: { data: MatchReportData; trackedTeamId: string }) {
-  void trackedTeamId
-
-  // Build a combined row per player
-  const playerMap = Object.fromEntries(data.players.map(p => [p.id, p]))
-  const allIds = new Set([
-    ...data.shots.map(r => r.player_id),
-    ...data.turnovers.map(r => r.player_id),
-    ...data.suspensions.map(r => r.player_id),
-  ])
-
-  const shotMap = Object.fromEntries(data.shots.map(r => [r.player_id, r]))
-  const turnMap = Object.fromEntries(data.turnovers.map(r => [r.player_id, r]))
-  const suspMap = Object.fromEntries(data.suspensions.map(r => [r.player_id, r]))
-
-  const fieldPlayers = [...allIds]
-    .map(id => ({ id, player: playerMap[id] as Player | undefined }))
-    .filter(({ player }) => player?.position !== 'goalkeeper')
-    .sort((a, b) => {
-      const aGoals = shotMap[a.id]?.goals ?? 0
-      const bGoals = shotMap[b.id]?.goals ?? 0
-      return bGoals - aGoals
-    })
-
-  if (fieldPlayers.length === 0) return null
-
+function ReportSection({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <Card className="overflow-hidden">
+    <div className="bg-white rounded-xl shadow-sm overflow-hidden">
       <div className="px-4 py-3 border-b border-gray-100">
-        <h2 className="font-semibold text-gray-800">Player stats</h2>
+        <h2 className="font-semibold text-gray-800 text-sm">{title}</h2>
       </div>
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
-              <th className="text-left px-4 py-2">#</th>
-              <th className="text-left px-4 py-2">Player</th>
-              <th className="text-center px-3 py-2">G</th>
-              <th className="text-center px-3 py-2">Shots</th>
-              <th className="text-center px-3 py-2">Shot%</th>
-              <th className="text-center px-3 py-2">TO</th>
-              <th className="text-center px-3 py-2">2min</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100">
-            {fieldPlayers.map(({ id, player }) => {
-              const s = shotMap[id] as PlayerShotRow | undefined
-              const t = turnMap[id] as PlayerTurnoverRow | undefined
-              const d = suspMap[id] as PlayerSuspensionRow | undefined
-              return (
-                <PlayerRow
-                  key={id}
-                  player={player}
-                  goals={s?.goals ?? 0}
-                  shots={s?.shots_attempted ?? 0}
-                  shotEff={s?.shot_efficiency ?? 0}
-                  turnovers={t?.total_turnovers ?? 0}
-                  susp2min={d?.suspensions_2min ?? 0}
-                />
-              )
-            })}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+      {children}
+    </div>
   )
 }
 
-function PlayerRow({ player, goals, shots, shotEff, turnovers, susp2min }: {
-  player: Player | undefined
-  goals: number
-  shots: number
-  shotEff: number
-  turnovers: number
-  susp2min: number
-}) {
+function Th({ children }: { children: React.ReactNode }) {
+  return <th className="px-3 py-2 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap">{children}</th>
+}
+
+function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+  return <td className={`px-3 py-2 text-center text-xs whitespace-nowrap ${className}`}>{children}</td>
+}
+
+// ─── Attack report table ──────────────────────────────────────────────────────
+
+function AttackReportTable({ rows, totals }: { rows: AttackRow[]; totals: Omit<AttackRow, 'player'> }) {
+  function Row({ r, player, isTotals = false }: { r: Omit<AttackRow, 'player'>; player?: Player; isTotals?: boolean }) {
+    const bg = isTotals ? 'bg-gray-50 font-semibold' : 'hover:bg-gray-50'
+    return (
+      <tr className={`border-b border-gray-100 ${bg}`}>
+        <td className="px-3 py-2 text-xs font-medium text-gray-800 whitespace-nowrap">
+          {player ? `${player.first_name} ${player.last_name}` : 'Samtals'}
+        </td>
+        <td className="px-3 py-2 text-center text-xs text-gray-500">{player?.jersey_number ?? '—'}</td>
+        <Td className={r.goals > 0 ? 'text-green-700 font-bold' : 'text-gray-400'}>{v(r.goals)}</Td>
+        <Td className="text-gray-600">{v(r.shots)}</Td>
+        <Td className="text-gray-500">{pct(r.goals, r.shots)}</Td>
+        <Td className={r.penGoals > 0 ? 'text-green-700' : 'text-gray-400'}>{r.penGoals > 0 || r.penShots > 0 ? `${r.penGoals}/${r.penShots}` : '—'}</Td>
+        <Td className={r.fbGoals > 0 ? 'text-green-700' : 'text-gray-400'}>{r.fbGoals > 0 || r.fbShots > 0 ? `${r.fbGoals}/${r.fbShots}` : '—'}</Td>
+        <Td className={r.assists > 0 ? 'text-blue-600' : 'text-gray-400'}>{v(r.assists)}</Td>
+        <Td className={r.turnovers > 2 ? 'text-orange-600 font-semibold' : r.turnovers > 0 ? 'text-gray-700' : 'text-gray-400'}>{v(r.turnovers)}</Td>
+        <Td className={r.drewSuspension > 0 ? 'text-gray-700' : 'text-gray-400'}>{v(r.drewSuspension)}</Td>
+        <Td className={r.drewPenalty > 0 ? 'text-blue-600' : 'text-gray-400'}>{v(r.drewPenalty)}</Td>
+      </tr>
+    )
+  }
+
   return (
-    <tr className="hover:bg-gray-50">
-      <td className="px-4 py-2.5 text-gray-500 font-mono text-xs">{player?.jersey_number ?? '?'}</td>
-      <td className="px-4 py-2.5 font-medium">
-        {player ? `${player.first_name} ${player.last_name}` : 'Unknown'}
-      </td>
-      <td className={`text-center px-3 py-2.5 font-bold ${goals > 0 ? 'text-green-700' : 'text-gray-400'}`}>
-        {goals}
-      </td>
-      <td className="text-center px-3 py-2.5 text-gray-600">{shots}</td>
-      <td className="text-center px-3 py-2.5 text-gray-600">
-        {shots > 0 ? `${shotEff}%` : '—'}
-      </td>
-      <td className={`text-center px-3 py-2.5 ${turnovers > 2 ? 'text-orange-600 font-medium' : 'text-gray-600'}`}>
-        {turnovers > 0 ? turnovers : '—'}
-      </td>
-      <td className={`text-center px-3 py-2.5 ${susp2min > 0 ? 'text-red-600 font-medium' : 'text-gray-400'}`}>
-        {susp2min > 0 ? susp2min : '—'}
-      </td>
-    </tr>
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-100">
+            <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Nafn</th>
+            <Th>#</Th>
+            <Th>Mörk</Th><Th>Skot</Th><Th>%</Th>
+            <Th>Víti M/S</Th>
+            <Th>Hraðaupp. M/S</Th>
+            <Th>Stoðsend.</Th>
+            <Th>Tapað</Th>
+            <Th>Fengnar 2mín</Th>
+            <Th>Fiskað víti</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {rows.map(r => <Row key={r.player.id} r={r} player={r.player} />)}
+          <Row r={totals} isTotals />
+        </tbody>
+      </table>
+    </div>
   )
 }
 
-// ─── Goalkeeper stats ─────────────────────────────────────────────────────────
+// ─── Defense report table ─────────────────────────────────────────────────────
 
-function GoalkeeperSection({ data }: { data: MatchReportData }) {
-  if (data.goalkeepers.length === 0) return null
-
-  const playerMap = Object.fromEntries(data.players.map(p => [p.id, p]))
+function DefenseReportTable({ rows, totals }: { rows: DefenseRow[]; totals: Omit<DefenseRow, 'player'> }) {
+  function Row({ r, player, isTotals = false }: { r: Omit<DefenseRow, 'player'>; player?: Player; isTotals?: boolean }) {
+    const bg = isTotals ? 'bg-gray-50 font-semibold' : 'hover:bg-gray-50'
+    return (
+      <tr className={`border-b border-gray-100 ${bg}`}>
+        <td className="px-3 py-2 text-xs font-medium text-gray-800 whitespace-nowrap">
+          {player ? `${player.first_name} ${player.last_name}` : 'Samtals'}
+        </td>
+        <td className="px-3 py-2 text-center text-xs text-gray-500">{player?.jersey_number ?? '—'}</td>
+        <Td className={r.blocks > 0 ? 'text-green-700 font-semibold' : 'text-gray-400'}>{v(r.blocks)}</Td>
+        <Td className={r.interceptions > 0 ? 'text-green-700 font-semibold' : 'text-gray-400'}>{v(r.interceptions)}</Td>
+        <Td>{r.duels > 0 ? `${r.duelsWon}/${r.duels}` : '—'}</Td>
+        <Td className="text-gray-500">{pct(r.duelsWon, r.duels)}</Td>
+        <Td className={r.rebounds > 0 ? 'text-gray-700' : 'text-gray-400'}>{v(r.rebounds)}</Td>
+        <Td className={r.freekick > 0 ? 'text-orange-500' : 'text-gray-400'}>{v(r.freekick)}</Td>
+        <Td className={r.penaltyAwarded > 0 ? 'text-red-600 font-bold' : 'text-gray-400'}>{v(r.penaltyAwarded)}</Td>
+        <Td className={r.yellowCards > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-400'}>{v(r.yellowCards)}</Td>
+        <Td className={r.suspensions2min > 0 ? 'text-red-500 font-semibold' : 'text-gray-400'}>{v(r.suspensions2min)}</Td>
+        <Td className={r.redCards > 0 ? 'text-red-700 font-bold' : 'text-gray-400'}>{v(r.redCards)}</Td>
+      </tr>
+    )
+  }
 
   return (
-    <Card className="overflow-hidden">
-      <div className="px-4 py-3 border-b border-gray-100">
-        <h2 className="font-semibold text-gray-800">Goalkeeper</h2>
-      </div>
-      <div className="divide-y divide-gray-100">
-        {data.goalkeepers.map(gk => {
-          const player = playerMap[gk.goalkeeper_player_id]
-          return (
-            <div key={gk.goalkeeper_player_id} className="px-4 py-4">
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <p className="font-medium">
-                    {player ? `${player.first_name} ${player.last_name}` : 'Goalkeeper'}
-                  </p>
-                  {player?.jersey_number && (
-                    <p className="text-xs text-gray-500">#{player.jersey_number}</p>
-                  )}
-                </div>
-                <div className={`text-3xl font-bold ${gk.save_pct >= 40 ? 'text-green-600' : 'text-gray-700'}`}>
-                  {gk.save_pct}%
-                </div>
+    <div className="overflow-x-auto">
+      <table className="w-full text-xs">
+        <thead>
+          <tr className="bg-gray-50 border-b border-gray-100">
+            <th className="px-3 py-2 text-left text-[10px] font-semibold text-gray-500 uppercase tracking-wide">Nafn</th>
+            <Th>#</Th>
+            <Th>Blokk</Th><Th>Stolinn</Th>
+            <Th>1á1 V/T</Th><Th>1á1 %</Th>
+            <Th>Fráköst</Th><Th>Fríköst</Th><Th>Víti á</Th>
+            <Th>Gult</Th><Th>2 mín</Th><Th>Rautt</Th>
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-50">
+          {rows.map(r => <Row key={r.player.id} r={r} player={r.player} />)}
+          <Row r={totals} isTotals />
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
+// ─── GK report section ────────────────────────────────────────────────────────
+
+function GKReportSection({ rows }: { rows: GKRow[] }) {
+  const totals = useMemo(() => rows.length > 1 ? sumGK(rows) : null, [rows])
+
+  return (
+    <div className="divide-y divide-gray-100">
+      {rows.map(gk => {
+        const savePct = gk.shotsFaced > 0 ? Math.round(gk.saves / gk.shotsFaced * 100) : 0
+        return (
+          <div key={gk.player.id} className="px-4 py-4">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="font-medium text-sm">{gk.player.first_name} {gk.player.last_name}</p>
+                {gk.player.jersey_number && <p className="text-xs text-gray-400">#{gk.player.jersey_number}</p>}
               </div>
-              <div className="grid grid-cols-3 gap-3">
-                <StatBox label="Shots faced" value={gk.shots_faced} />
-                <StatBox label="Saves" value={gk.saves} highlight={gk.saves > 0} />
-                <StatBox label="Goals conceded" value={gk.goals_conceded} />
+              <div className={`text-3xl font-bold ${savePct >= 40 ? 'text-green-600' : 'text-gray-600'}`}>
+                {savePct}%
               </div>
             </div>
-          )
-        })}
-      </div>
-    </Card>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <StatBox label="Varin skot" value={gk.saves} highlight={gk.saves > 0} />
+              <StatBox label="Fjöldi skota" value={gk.shotsFaced} />
+              <StatBox label="Markmið gegn" value={gk.shotsFaced - gk.saves} />
+            </div>
+            {/* Breakdown by range */}
+            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+              {[
+                { label: 'Víti', saved: gk.savedPen, faced: gk.facedPen },
+                { label: 'Horn', saved: gk.savedCorn, faced: gk.facedCorn },
+                { label: '9m+', saved: gk.savedNineM, faced: gk.facedNineM },
+                { label: '7–8m', saved: gk.savedS78, faced: gk.facedS78 },
+                { label: '6m', saved: gk.savedS6m, faced: gk.facedS6m },
+                { label: 'Lína', saved: gk.savedLine, faced: gk.facedLine },
+              ].filter(x => x.faced > 0).map(x => (
+                <div key={x.label} className="bg-gray-50 rounded-lg p-2 text-center">
+                  <p className="text-sm font-bold text-gray-800">{x.saved}/{x.faced}</p>
+                  <p className="text-[10px] text-gray-500">{x.label} ({pct(x.saved, x.faced)})</p>
+                </div>
+              ))}
+            </div>
+            {(gk.emptyPhase > 0 || gk.positiveResponse > 0) && (
+              <div className="flex gap-3 mt-3">
+                {gk.emptyPhase > 0 && <span className="text-xs text-red-500">Tóm fasi: {gk.emptyPhase}</span>}
+                {gk.positiveResponse > 0 && <span className="text-xs text-green-600">Jákv. viðbrögð: {gk.positiveResponse}</span>}
+              </div>
+            )}
+          </div>
+        )
+      })}
+      {totals && (
+        <div className="px-4 py-3 bg-gray-50">
+          <p className="text-xs font-semibold text-gray-600 mb-2">Samtals</p>
+          <div className="grid grid-cols-3 gap-3">
+            <StatBox label="Varin skot" value={totals.saves} highlight={totals.saves > 0} />
+            <StatBox label="Fjöldi skota" value={totals.shotsFaced} />
+            <StatBox label="Markvarsla %" value={`${totals.shotsFaced > 0 ? Math.round(totals.saves / totals.shotsFaced * 100) : 0}%`} />
+          </div>
+        </div>
+      )}
+    </div>
   )
 }

@@ -1,5 +1,5 @@
 import { supabase } from './client'
-import type { Team, Player, Match, Roster, Season, Competition, MatchInsert, RosterInsert } from '@/lib/db/schema'
+import type { Team, Player, Match, Roster, Season, Competition, MatchInsert, RosterInsert, Profile } from '@/lib/db/schema'
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
 
@@ -9,8 +9,13 @@ export async function getTeams(): Promise<Team[]> {
   return data
 }
 
-export async function createTeam(team: Omit<Team, 'id' | 'created_at'>): Promise<Team> {
-  const { data, error } = await supabase.from('teams').insert(team).select().single()
+export async function createTeam(team: Omit<Team, 'id' | 'created_at' | 'owner_user_id'>): Promise<Team> {
+  const { data: { user } } = await supabase.auth.getUser()
+  const { data, error } = await supabase
+    .from('teams')
+    .insert({ ...team, owner_user_id: user?.id ?? null })
+    .select()
+    .single()
   if (error) throw error
   return data
 }
@@ -23,7 +28,14 @@ export async function upsertTeamByName(name: string, shortName?: string): Promis
     .maybeSingle()
   if (existing) return existing
 
-  return createTeam({ name: name.trim(), short_name: shortName?.trim() ?? null, home_venue: null })
+  // Opponent teams are created without owner so any user can read them
+  const { data, error } = await supabase
+    .from('teams')
+    .insert({ name: name.trim(), short_name: shortName?.trim() ?? null, home_venue: null, owner_user_id: null })
+    .select()
+    .single()
+  if (error) throw error
+  return data
 }
 
 // ─── Players ──────────────────────────────────────────────────────────────────
@@ -172,4 +184,46 @@ export function getTrackedTeamId(): string | null {
 
 export function setTrackedTeamId(id: string): void {
   localStorage.setItem(TRACKED_TEAM_KEY, id)
+}
+
+// ─── Auth / profiles ──────────────────────────────────────────────────────────
+
+export async function getProfile(userId: string): Promise<Profile | null> {
+  const { data } = await supabase.from('profiles').select('*').eq('id', userId).maybeSingle()
+  return data
+}
+
+export async function checkIsAdmin(userId: string): Promise<boolean> {
+  const { data } = await supabase.from('admins').select('user_id').eq('user_id', userId).maybeSingle()
+  return !!data
+}
+
+export interface ProfileWithTeam extends Profile {
+  teamName: string | null
+}
+
+export async function getAllProfiles(): Promise<ProfileWithTeam[]> {
+  const { data: profiles, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  if (!profiles) return []
+
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('name, owner_user_id')
+    .not('owner_user_id', 'is', null)
+
+  const teamByUser: Record<string, string> = {}
+  for (const t of teams ?? []) {
+    if (t.owner_user_id) teamByUser[t.owner_user_id] = t.name
+  }
+
+  return profiles.map(p => ({ ...p, teamName: teamByUser[p.id] ?? null }))
+}
+
+export async function setApproval(userId: string, approved: boolean): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ is_approved: approved }).eq('id', userId)
+  if (error) throw error
 }

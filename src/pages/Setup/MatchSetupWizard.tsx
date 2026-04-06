@@ -13,9 +13,10 @@ type Step = 'team-setup' | 'match-details' | 'roster' | 'confirm'
 
 interface Props {
   onMatchStarted: (match: Match, trackedTeam: Team, opponentTeam: Team) => void
+  onCancel?: () => void
 }
 
-export function MatchSetupWizard({ onMatchStarted }: Props) {
+export function MatchSetupWizard({ onMatchStarted, onCancel }: Props) {
   const storedTeamId = getTrackedTeamId()
   const [step, setStep] = useState<Step>(storedTeamId ? 'match-details' : 'team-setup')
   const [trackedTeamId, setTrackedTeamIdState] = useState<string>(storedTeamId ?? '')
@@ -60,8 +61,13 @@ export function MatchSetupWizard({ onMatchStarted }: Props) {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4">
-        <h1 className="text-lg font-bold text-gray-900">Handbolti</h1>
+      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-3">
+        {onCancel && (
+          <button onClick={onCancel} className="text-gray-500 hover:text-gray-700 text-sm font-medium">
+            ← Back
+          </button>
+        )}
+        <h1 className="text-lg font-bold text-gray-900">New Match</h1>
       </div>
 
       {/* Progress bar */}
