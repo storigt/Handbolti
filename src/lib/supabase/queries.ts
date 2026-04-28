@@ -258,3 +258,9 @@ export async function setApproval(userId: string, approved: boolean): Promise<vo
   const { error } = await supabase.from('profiles').update({ is_approved: approved }).eq('id', userId)
   if (error) throw error
 }
+
+export async function updateProfileTeam(teamId: string): Promise<void> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return
+  await supabase.from('profiles').update({ tracked_team_id: teamId }).eq('id', user.id)
+}

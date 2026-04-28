@@ -9,7 +9,7 @@ import { LoginPage } from '@/pages/Auth/LoginPage'
 import { AdminPage } from '@/pages/Admin/AdminPage'
 import { useMatchStore } from '@/store/matchStore'
 import { syncPendingEvents } from '@/lib/sync/supabaseSync'
-import { getRoster, getTrackedTeamId, setTrackedTeamId, getTeams, getProfile, checkIsAdmin, getMatchById, getTeamById, getMatchEvents, getOwnedTeam } from '@/lib/supabase/queries'
+import { getRoster, getTrackedTeamId, setTrackedTeamId, getTeams, getProfile, checkIsAdmin, getMatchById, getTeamById, getMatchEvents, updateProfileTeam } from '@/lib/supabase/queries'
 import { reopenMatch } from '@/lib/supabase/reportQueries'
 import { supabase } from '@/lib/supabase/client'
 import { getSavedSession } from '@/store/matchStore'
@@ -141,7 +141,7 @@ function PendingApprovalScreen({ onSignOut, userEmail }: { onSignOut: () => void
   )
 }
 
-function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string }) {
+function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; userEmail: string; profileTeamId: string | null }) {
   const match = useMatchStore(s => s.match)
   const setSession = useMatchStore(s => s.setSession)
   const resumeSession = useMatchStore(s => s.resumeSession)
@@ -151,19 +151,21 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
   const [view, setView] = useState<AppView>('home')
   const [hasSavedMatch, setHasSavedMatch] = useState(() => !!getSavedSession())
 
-  const [savedTeamId, setSavedTeamId] = useState(getTrackedTeamId)
-  const [teamLookupDone, setTeamLookupDone] = useState(!!getTrackedTeamId())
+  // Source of truth: profile (cross-device) with localStorage as fast cache.
+  const [savedTeamId, setSavedTeamId] = useState<string | null>(() => {
+    const local = getTrackedTeamId()
+    // Sync profile team ID into localStorage if localStorage is empty
+    if (!local && profileTeamId) {
+      setTrackedTeamId(profileTeamId)
+      return profileTeamId
+    }
+    return local
+  })
 
-  // If localStorage was cleared, restore the team ID from the user's account
+  // If localStorage has a team but the profile doesn't, push it to the profile
   useEffect(() => {
-    if (!savedTeamId) {
-      getOwnedTeam().then(team => {
-        if (team) {
-          setTrackedTeamId(team.id)
-          setSavedTeamId(team.id)
-        }
-        setTeamLookupDone(true)
-      })
+    if (savedTeamId && !profileTeamId) {
+      void updateProfileTeam(savedTeamId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -322,9 +324,6 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
   }
 
   if (view === 'setup') {
-    // Wait for team lookup before showing wizard — prevents team-setup step
-    // appearing on a new device before getOwnedTeam() has resolved
-    if (!teamLookupDone) return <Spinner />
     return <MatchSetupWizard initialTeamId={savedTeamId} onMatchStarted={handleMatchStarted} onCancel={() => setView('home')} />
   }
 
@@ -447,7 +446,7 @@ function AuthGateWithInner() {
   return (
     <>
       <OnlineSync />
-      <AppInner isAdmin={isAdmin} userEmail={profile.email} />
+      <AppInner isAdmin={isAdmin} userEmail={profile.email} profileTeamId={profile.tracked_team_id ?? null} />
     </>
   )
 }

@@ -2,7 +2,7 @@
 import { useState } from 'react'
 import { useMutation } from '@tanstack/react-query'
 import { Button, Card, Field, Input, Label } from '@/components/ui'
-import { createTeam, createPlayer, setTrackedTeamId } from '@/lib/supabase/queries'
+import { createTeam, createPlayer, setTrackedTeamId, updateProfileTeam } from '@/lib/supabase/queries'
 import type { Player } from '@/lib/db/schema'
 
 interface DraftPlayer {
@@ -37,6 +37,7 @@ export function TeamSetupStep({ onDone }: Props) {
         home_venue: null,
       })
       setTrackedTeamId(team.id)
+      void updateProfileTeam(team.id)
 
       const validPlayers = players.filter(p => p.first_name.trim() || p.last_name.trim())
       for (const p of validPlayers) {

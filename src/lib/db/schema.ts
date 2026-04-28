@@ -119,6 +119,7 @@ export interface Profile {
   id: string
   email: string
   is_approved: boolean
+  tracked_team_id: string | null
   created_at: string
 }
 

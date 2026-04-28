@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Clearing cache…</title>
+  <style>
+    body { font-family: sans-serif; background: #0f172a; color: white;
+           display: flex; align-items: center; justify-content: center;
+           height: 100vh; margin: 0; flex-direction: column; gap: 12px; }
+    p { color: #94a3b8; font-size: 14px; }
+  </style>
+</head>
+<body>
+  <h2>Hreinsun…</h2>
+  <p>Eyðir þjónustuvinnslum og skyndiminni…</p>
+  <script>
+    (async function () {
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations()
+        await Promise.all(regs.map(r => r.unregister()))
+        // Also clear all caches
+        const keys = await caches.keys()
+        await Promise.all(keys.map(k => caches.delete(k)))
+      }
+      // Small delay so the user sees it worked, then redirect
+      setTimeout(() => { window.location.replace('/') }, 800)
+    })()
+  </script>
+</body>
+</html>
