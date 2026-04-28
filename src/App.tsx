@@ -152,7 +152,7 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
   const [hasSavedMatch, setHasSavedMatch] = useState(() => !!getSavedSession())
 
   // Source of truth: profile (cross-device) with localStorage as fast cache.
-  const [savedTeamId, setSavedTeamId] = useState<string | null>(() => {
+  const [savedTeamId] = useState<string | null>(() => {
     const local = getTrackedTeamId()
     // Sync profile team ID into localStorage if localStorage is empty
     if (!local && profileTeamId) {
