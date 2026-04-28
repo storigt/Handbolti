@@ -260,7 +260,7 @@ function PlayerSection({
                 type="number"
                 value={entry.jerseyOverride || (p.jersey_number?.toString() ?? '')}
                 onChange={e => onJerseyOverride(p.id, e.target.value)}
-                className="w-14 text-center text-sm font-bold border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                className="w-16 text-center text-sm font-bold border border-gray-200 rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-blue-400"
                 min={1}
                 max={99}
                 disabled={!entry.inSquad}

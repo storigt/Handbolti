@@ -259,6 +259,23 @@ export async function setApproval(userId: string, approved: boolean): Promise<vo
   if (error) throw error
 }
 
+export async function updateTeam(id: string, updates: { name?: string; short_name?: string | null; home_venue?: string | null }): Promise<Team> {
+  const { data, error } = await supabase.from('teams').update(updates).eq('id', id).select().single()
+  if (error) throw error
+  return data
+}
+
+export async function deleteMatch(matchId: string): Promise<void> {
+  // Delete child records in order (no cascade on events/event_links/court_lineups)
+  await supabase.from('event_links').delete().eq('match_id', matchId)
+  await supabase.from('events').delete().eq('match_id', matchId)
+  await supabase.from('court_lineups').delete().eq('match_id', matchId)
+  // rosters cascade, but delete explicitly to be safe
+  await supabase.from('rosters').delete().eq('match_id', matchId)
+  const { error } = await supabase.from('matches').delete().eq('id', matchId)
+  if (error) throw error
+}
+
 export async function updateProfileTeam(teamId: string): Promise<void> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return

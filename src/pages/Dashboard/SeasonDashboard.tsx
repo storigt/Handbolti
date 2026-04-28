@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query'
 import {
   LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid,
 } from 'recharts'
@@ -11,7 +11,7 @@ import {
   getMatchEventsForMatches,
   type MatchWithTeams,
 } from '@/lib/supabase/dashboardQueries'
-import { getPlayersByTeam } from '@/lib/supabase/queries'
+import { getPlayersByTeam, updateTeam, deleteMatch } from '@/lib/supabase/queries'
 import { computeAttack, computeDefense, computeGK } from '@/lib/stats/matchStats'
 import { AttackTable, DefenseTable, GKTable, TeamStatsTable } from '@/components/stats/StatTables'
 import { useMinuteFilter, MinuteFilterBar } from '@/components/stats/MinuteFilter'
@@ -32,15 +32,41 @@ interface Props {
 }
 
 export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props) {
+  const queryClient = useQueryClient()
   const [tab, setTab] = useState<Tab>('overview')
   const [seasonId, setSeasonId] = useState<string>('')
   const [competitionId, setCompetitionId] = useState<string>('')
   // multi-match chip filter (empty = all)
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set())
   const [showExport, setShowExport] = useState(false)
+  const [showEditTeam, setShowEditTeam] = useState(false)
   // drill-down into a single match from Leikir tab
   const [drillMatchId, setDrillMatchId] = useState<string | null>(null)
   const [drillSubTab, setDrillSubTab] = useState<StatsSubTab>('attack')
+
+  const editTeamMutation = useMutation({
+    mutationFn: (updates: { name: string; short_name: string; home_venue: string }) =>
+      updateTeam(trackedTeam.id, {
+        name: updates.name.trim(),
+        short_name: updates.short_name.trim() || null,
+        home_venue: updates.home_venue.trim() || null,
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['teams'] })
+      setShowEditTeam(false)
+    },
+  })
+
+  const deleteMatchMutation = useMutation({
+    mutationFn: deleteMatch,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['match-history'] })
+      void queryClient.invalidateQueries({ queryKey: ['match-summaries'] })
+    },
+    onError: (err) => {
+      alert(`Tókst ekki að eyða leik: ${err instanceof Error ? err.message : 'Óþekkt villa'}`)
+    },
+  })
 
   const { data: seasons = [] } = useQuery({
     queryKey: ['seasons-for-team', trackedTeam.id],
@@ -195,11 +221,19 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
       <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-        <div>
-          <h1 className="text-lg font-bold">{trackedTeam.name}</h1>
-          <p className="text-slate-400 text-sm">Tímabilsyfirlit</p>
+        <div className="flex items-center gap-2 min-w-0">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold truncate">{trackedTeam.name}</h1>
+            <p className="text-slate-400 text-sm">Tímabilsyfirlit</p>
+          </div>
+          <button
+            onClick={() => setShowEditTeam(true)}
+            className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
+          >
+            Breyta lið
+          </button>
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 shrink-0">
           <button
             onClick={() => setShowExport(true)}
             className="px-3 py-2 bg-slate-700 text-white text-sm rounded-lg hover:bg-slate-600 font-medium"
@@ -214,6 +248,16 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
           </button>
         </div>
       </div>
+
+      {showEditTeam && (
+        <EditTeamModal
+          team={trackedTeam}
+          onSave={(updates) => editTeamMutation.mutate(updates)}
+          onClose={() => setShowEditTeam(false)}
+          saving={editTeamMutation.isPending}
+          error={editTeamMutation.error instanceof Error ? editTeamMutation.error.message : null}
+        />
+      )}
 
       {showExport && (
         <ExportModal
@@ -343,6 +387,8 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
               trackedTeamId={trackedTeam.id}
               onDrillDown={id => { setDrillMatchId(id); setDrillSubTab('attack') }}
               onEditMatch={onEditMatch}
+              onDeleteMatch={id => deleteMatchMutation.mutate(id)}
+              deletingMatchId={deleteMatchMutation.isPending ? (deleteMatchMutation.variables as string) : null}
             />
           </div>
         )}
@@ -502,12 +548,18 @@ function MatchesTab({
   trackedTeamId,
   onDrillDown,
   onEditMatch,
+  onDeleteMatch,
+  deletingMatchId,
 }: {
   matches: MatchWithTeams[]
   trackedTeamId: string
   onDrillDown: (matchId: string) => void
   onEditMatch: (matchId: string) => void
+  onDeleteMatch: (matchId: string) => void
+  deletingMatchId: string | null
 }) {
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
   if (matches.length === 0) {
     return (
       <Card className="p-8 text-center text-gray-500">
@@ -529,9 +581,11 @@ function MatchesTab({
           const date = m.match_date
             ? new Date(m.match_date).toLocaleDateString('is-IS', { day: 'numeric', month: 'short', year: 'numeric' })
             : 'Óþekkt dagsetning'
+          const isDeleting = deletingMatchId === m.id
+          const isConfirming = confirmDeleteId === m.id
 
           return (
-            <div key={m.id} className="flex items-center px-4 py-3 gap-3 hover:bg-gray-50 transition-colors">
+            <div key={m.id} className="flex items-center px-4 py-3 gap-2 hover:bg-gray-50 transition-colors">
               <button
                 onClick={() => onDrillDown(m.id)}
                 className="flex items-center gap-3 flex-1 text-left min-w-0"
@@ -556,6 +610,30 @@ function MatchesTab({
               >
                 Breyta
               </button>
+              {isConfirming ? (
+                <div className="flex gap-1 shrink-0">
+                  <button
+                    onClick={() => { onDeleteMatch(m.id); setConfirmDeleteId(null) }}
+                    disabled={isDeleting}
+                    className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
+                  >
+                    {isDeleting ? '…' : 'Eyða?'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600"
+                  >
+                    Hætta við
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmDeleteId(m.id)}
+                  className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors"
+                >
+                  Eyða
+                </button>
+              )}
             </div>
           )
         })}
@@ -638,6 +716,81 @@ function DrillDownView({
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
+// ─── Edit team modal ──────────────────────────────────────────────────────────
+
+function EditTeamModal({
+  team,
+  onSave,
+  onClose,
+  saving,
+  error,
+}: {
+  team: Team
+  onSave: (updates: { name: string; short_name: string; home_venue: string }) => void
+  onClose: () => void
+  saving: boolean
+  error: string | null
+}) {
+  const [name, setName] = useState(team.name)
+  const [shortName, setShortName] = useState(team.short_name ?? '')
+  const [homeVenue, setHomeVenue] = useState(team.home_venue ?? '')
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm p-6 space-y-4">
+        <h2 className="text-lg font-semibold text-gray-900">Breyta liði</h2>
+
+        <div className="space-y-3">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Nafn liðs *</label>
+            <input
+              value={name}
+              onChange={e => setName(e.target.value)}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Skammstöfun (3–4 stafir)</label>
+            <input
+              value={shortName}
+              onChange={e => setShortName(e.target.value)}
+              maxLength={6}
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">Heimavöllur</label>
+            <input
+              value={homeVenue}
+              onChange={e => setHomeVenue(e.target.value)}
+              placeholder="t.d. Laugardalshöll"
+              className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={onClose}
+            className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+          >
+            Hætta við
+          </button>
+          <button
+            onClick={() => onSave({ name, short_name: shortName, home_venue: homeVenue })}
+            disabled={!name.trim() || saving}
+            className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Vista…' : 'Vista'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
