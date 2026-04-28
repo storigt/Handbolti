@@ -12,12 +12,13 @@ import { Spinner } from '@/components/ui'
 type Step = 'team-setup' | 'match-details' | 'roster' | 'confirm'
 
 interface Props {
+  initialTeamId?: string | null
   onMatchStarted: (match: Match, trackedTeam: Team, opponentTeam: Team) => void
   onCancel?: () => void
 }
 
-export function MatchSetupWizard({ onMatchStarted, onCancel }: Props) {
-  const storedTeamId = getTrackedTeamId()
+export function MatchSetupWizard({ initialTeamId, onMatchStarted, onCancel }: Props) {
+  const storedTeamId = initialTeamId ?? getTrackedTeamId()
   const [step, setStep] = useState<Step>(storedTeamId ? 'match-details' : 'team-setup')
   const [trackedTeamId, setTrackedTeamIdState] = useState<string>(storedTeamId ?? '')
   const [matchId, setMatchId] = useState<string>('')

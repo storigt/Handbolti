@@ -152,6 +152,7 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
   const [hasSavedMatch, setHasSavedMatch] = useState(() => !!getSavedSession())
 
   const [savedTeamId, setSavedTeamId] = useState(getTrackedTeamId)
+  const [teamLookupDone, setTeamLookupDone] = useState(!!getTrackedTeamId())
 
   // If localStorage was cleared, restore the team ID from the user's account
   useEffect(() => {
@@ -161,6 +162,7 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
           setTrackedTeamId(team.id)
           setSavedTeamId(team.id)
         }
+        setTeamLookupDone(true)
       })
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -320,7 +322,10 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
   }
 
   if (view === 'setup') {
-    return <MatchSetupWizard onMatchStarted={handleMatchStarted} onCancel={() => setView('home')} />
+    // Wait for team lookup before showing wizard — prevents team-setup step
+    // appearing on a new device before getOwnedTeam() has resolved
+    if (!teamLookupDone) return <Spinner />
+    return <MatchSetupWizard initialTeamId={savedTeamId} onMatchStarted={handleMatchStarted} onCancel={() => setView('home')} />
   }
 
   return (
