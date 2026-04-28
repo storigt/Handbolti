@@ -10,8 +10,19 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: 'autoUpdate',
+      devOptions: {
+        enabled: false,
+      },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,ico,png,svg}'],
+        globPatterns: ['**/*.{js,css,ico,png,svg}'],
+        navigateFallback: null,
+        runtimeCaching: [
+          {
+            // Never cache Supabase API calls — auth depends on live network responses
+            urlPattern: /^https:\/\/[a-z]+\.supabase\.co\/.*/i,
+            handler: 'NetworkOnly',
+          },
+        ],
       },
       manifest: {
         name: 'Handbolti Stats',

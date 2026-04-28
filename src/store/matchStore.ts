@@ -1,4 +1,40 @@
 import { create } from 'zustand'
+
+// ─── Session persistence ──────────────────────────────────────────────────────
+
+const SAVED_SESSION_KEY = 'handbolti_active_match_v1'
+
+export interface SavedSession {
+  matchId: string
+  period: number
+  matchMinute: number
+  lineupPlayerIds: string[]
+  lineupId: string | null
+}
+
+export function getSavedSession(): SavedSession | null {
+  try {
+    const raw = localStorage.getItem(SAVED_SESSION_KEY)
+    if (!raw) return null
+    return JSON.parse(raw) as SavedSession
+  } catch { return null }
+}
+
+function persistSession(state: MatchStoreState) {
+  if (!state.match) return
+  const saved: SavedSession = {
+    matchId: state.match.id,
+    period: state.currentPeriod,
+    matchMinute: state.currentMatchMinute,
+    lineupPlayerIds: state.currentLineupPlayerIds,
+    lineupId: state.currentLineupId,
+  }
+  localStorage.setItem(SAVED_SESSION_KEY, JSON.stringify(saved))
+}
+
+function clearPersistedSession() {
+  localStorage.removeItem(SAVED_SESSION_KEY)
+}
 import { v4 as uuidv4 } from 'uuid'
 import type {
   Event,
@@ -43,6 +79,18 @@ interface MatchStoreState {
     trackedPlayers: RosteredPlayer[]
     opponentPlayers: RosteredPlayer[]
   }) => void
+  resumeSession: (data: {
+    match: Match
+    homeTeam: Team
+    awayTeam: Team
+    trackedPlayers: RosteredPlayer[]
+    opponentPlayers: RosteredPlayer[]
+    events: Event[]
+    period: number
+    matchMinute: number
+    lineupPlayerIds: string[]
+    lineupId: string | null
+  }) => void
   setOnline: (online: boolean) => void
   startPeriod: (period: number) => void
   setMatchMinute: (minute: number) => void
@@ -72,10 +120,13 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
   currentLineupId: null,
   currentLineupPlayerIds: [],
 
-  setMatchFinalized: () =>
-    set(state => ({ match: state.match ? { ...state.match, status: 'final' } : null })),
+  setMatchFinalized: () => {
+    clearPersistedSession()
+    set(state => ({ match: state.match ? { ...state.match, status: 'final' } : null }))
+  },
 
-  clearSession: () =>
+  clearSession: () => {
+    clearPersistedSession()
     set({
       match: null,
       homeTeam: null,
@@ -86,13 +137,30 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
       currentMatchMinute: 0,
       currentLineupId: null,
       currentLineupPlayerIds: [],
-    }),
+    })
+  },
 
   setSession: (data) => {
     const starterIds = data.trackedPlayers
       .filter(p => p.roster.is_starter)
       .map(p => p.id)
     set({ ...data, events: [], currentPeriod: 1, periodStartedAt: null, currentMatchMinute: 0, currentLineupId: null, currentLineupPlayerIds: starterIds })
+  },
+
+  resumeSession: (data) => {
+    set({
+      match: data.match,
+      homeTeam: data.homeTeam,
+      awayTeam: data.awayTeam,
+      trackedPlayers: data.trackedPlayers,
+      opponentPlayers: data.opponentPlayers,
+      events: data.events,
+      currentPeriod: data.period,
+      periodStartedAt: null,
+      currentMatchMinute: data.matchMinute,
+      currentLineupId: data.lineupId,
+      currentLineupPlayerIds: data.lineupPlayerIds,
+    })
   },
 
   setOnline: (online) => set({ isOnline: online }),
@@ -226,6 +294,13 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
     void voidEventWithSync(clientId).catch(() => {})
   },
 }))
+
+// Auto-persist the active match session to localStorage on every state change
+useMatchStore.subscribe((state) => {
+  if (state.match && state.match.status === 'in_progress') {
+    persistSession(state)
+  }
+})
 
 // ─── Selectors ────────────────────────────────────────────────────────────────
 

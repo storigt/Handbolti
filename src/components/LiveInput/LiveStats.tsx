@@ -5,8 +5,10 @@ import { computeAttack, computeDefense, computeGK } from '@/lib/stats/matchStats
 import { AttackTable, DefenseTable, GKTable, TeamStatsTable } from '@/components/stats/StatTables'
 import { useMinuteFilter, MinuteFilterBar } from '@/components/stats/MinuteFilter'
 import { ShotMap } from '@/components/stats/ShotMap'
+import { computeIndices } from '@/lib/stats/indices'
+import { IndexPanel } from '@/components/stats/IndexPanel'
 
-type StatsTab = 'attack' | 'defense' | 'gk' | 'team' | 'shotmap'
+type StatsTab = 'attack' | 'defense' | 'gk' | 'team' | 'shotmap' | 'indices'
 
 // ─── Score bar ────────────────────────────────────────────────────────────────
 
@@ -50,6 +52,8 @@ export function LiveStats() {
   const attackStats = useMemo(() => computeAttack(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
   const defenseStats = useMemo(() => computeDefense(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
   const gkStats = useMemo(() => computeGK(events, goalkeepers, trackedTeamId), [events, goalkeepers, trackedTeamId])
+  const indices = useMemo(() => computeIndices(events, trackedTeamId), [events, trackedTeamId])
+  const minuteFiltered = range.from !== null || range.to !== null
 
   return (
     <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
@@ -60,7 +64,8 @@ export function LiveStats() {
           { v: 'defense' as StatsTab, label: 'Vörn' },
           { v: 'gk' as StatsTab, label: 'Markvörður' },
           { v: 'team' as StatsTab, label: 'Liðstölur' },
-          { v: 'shotmap' as StatsTab, label: 'Skotakort' },
+          { v: 'shotmap' as StatsTab, label: 'Skotkort' },
+          { v: 'indices' as StatsTab, label: 'Indexar' },
         ] as const).map(t => (
           <button key={t.v} onPointerDown={() => setTab(t.v)}
             className={`flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap px-3 ${tab === t.v ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
@@ -75,6 +80,7 @@ export function LiveStats() {
         {tab === 'gk' && <GKTable rows={gkStats} />}
         {tab === 'team' && <TeamStatsTable events={events} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={opponentTeamName} />}
         {tab === 'shotmap' && <ShotMap allEvents={allEvents} players={trackedPlayers} trackedTeamId={trackedTeamId} />}
+        {tab === 'indices' && <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />}
       </div>
     </div>
   )

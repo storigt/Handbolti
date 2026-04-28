@@ -9,8 +9,10 @@ import { LoginPage } from '@/pages/Auth/LoginPage'
 import { AdminPage } from '@/pages/Admin/AdminPage'
 import { useMatchStore } from '@/store/matchStore'
 import { syncPendingEvents } from '@/lib/sync/supabaseSync'
-import { getRoster, getTrackedTeamId, getTeams, getProfile, checkIsAdmin } from '@/lib/supabase/queries'
+import { getRoster, getTrackedTeamId, setTrackedTeamId, getTeams, getProfile, checkIsAdmin, getMatchById, getTeamById, getMatchEvents, getOwnedTeam } from '@/lib/supabase/queries'
+import { reopenMatch } from '@/lib/supabase/reportQueries'
 import { supabase } from '@/lib/supabase/client'
+import { getSavedSession } from '@/store/matchStore'
 import type { Match, Team, Profile } from '@/lib/db/schema'
 
 const queryClient = new QueryClient()
@@ -50,18 +52,22 @@ type AppView = 'home' | 'setup' | 'dashboard' | 'admin'
 
 function HomeScreen({
   onNewMatch,
+  onResumeMatch,
   onDashboard,
   onAdmin,
   onSignOut,
   hasSavedTeam,
+  hasSavedMatch,
   isAdmin,
   userEmail,
 }: {
   onNewMatch: () => void
+  onResumeMatch: () => void
   onDashboard: () => void
   onAdmin: () => void
   onSignOut: () => void
   hasSavedTeam: boolean
+  hasSavedMatch: boolean
   isAdmin: boolean
   userEmail: string
 }) {
@@ -71,6 +77,14 @@ function HomeScreen({
       <p className="text-slate-400 text-sm">Handball match statistics</p>
 
       <div className="flex flex-col gap-3 w-full max-w-xs">
+        {hasSavedMatch && (
+          <button
+            onClick={onResumeMatch}
+            className="w-full py-4 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-semibold rounded-xl text-lg transition-colors"
+          >
+            Halda áfram leik
+          </button>
+        )}
         <button
           onClick={onNewMatch}
           className="w-full py-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl text-lg transition-colors"
@@ -114,7 +128,7 @@ function PendingApprovalScreen({ onSignOut, userEmail }: { onSignOut: () => void
       <div className="text-5xl">⏳</div>
       <h2 className="text-xl font-bold text-center">Aðgangur bíður samþykkis</h2>
       <p className="text-slate-400 text-sm text-center max-w-sm">
-        Reikningurinn þinn hefur verið búinn til en þarfnast samþykkis stjórnanda áður en þú getur skráð þig inn.
+        Reikningurinn þinn hefur verið búinn til en þarfnast samþykkis áður en þú getur skráð þig inn.
       </p>
       <p className="text-xs text-slate-500">{userEmail}</p>
       <button
@@ -130,12 +144,28 @@ function PendingApprovalScreen({ onSignOut, userEmail }: { onSignOut: () => void
 function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string }) {
   const match = useMatchStore(s => s.match)
   const setSession = useMatchStore(s => s.setSession)
+  const resumeSession = useMatchStore(s => s.resumeSession)
   const clearSession = useMatchStore(s => s.clearSession)
   const [startError, setStartError] = useState<string | null>(null)
   const [starting, setStarting] = useState(false)
   const [view, setView] = useState<AppView>('home')
+  const [hasSavedMatch, setHasSavedMatch] = useState(() => !!getSavedSession())
 
-  const savedTeamId = getTrackedTeamId()
+  const [savedTeamId, setSavedTeamId] = useState(getTrackedTeamId)
+
+  // If localStorage was cleared, restore the team ID from the user's account
+  useEffect(() => {
+    if (!savedTeamId) {
+      getOwnedTeam().then(team => {
+        if (team) {
+          setTrackedTeamId(team.id)
+          setSavedTeamId(team.id)
+        }
+      })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   const { data: allTeams = [] } = useQuery({
     queryKey: ['teams'],
     queryFn: getTeams,
@@ -145,6 +175,74 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
 
   async function handleSignOut() {
     await supabase.auth.signOut()
+  }
+
+  async function loadMatchIntoStore(matchId: string, savedPeriod?: number, savedMinute?: number, savedLineupIds?: string[], savedLineupId?: string | null) {
+    const [match, allTeamsData] = await Promise.all([
+      getMatchById(matchId),
+      getTeams(),
+    ])
+    if (!match) throw new Error('Leikur fannst ekki')
+
+    const homeTeam = allTeamsData.find(t => t.id === match.home_team_id) ?? await getTeamById(match.home_team_id)
+    const awayTeam = allTeamsData.find(t => t.id === match.away_team_id) ?? await getTeamById(match.away_team_id)
+    if (!homeTeam || !awayTeam) throw new Error('Lið fundust ekki')
+
+    const [rosterWithPlayers, events] = await Promise.all([
+      getRoster(match.id),
+      getMatchEvents(match.id),
+    ])
+
+    const trackedPlayers = rosterWithPlayers
+      .filter(r => r.team_id === match.tracked_team_id)
+      .map(r => ({ ...r.player, roster: r }))
+    const opponentPlayers = rosterWithPlayers
+      .filter(r => r.team_id !== match.tracked_team_id)
+      .map(r => ({ ...r.player, roster: r }))
+
+    const lineupPlayerIds = savedLineupIds ?? trackedPlayers.filter(p => p.roster.is_starter).map(p => p.id)
+
+    resumeSession({
+      match,
+      homeTeam,
+      awayTeam,
+      trackedPlayers,
+      opponentPlayers,
+      events,
+      period: savedPeriod ?? 1,
+      matchMinute: savedMinute ?? 0,
+      lineupPlayerIds,
+      lineupId: savedLineupId ?? null,
+    })
+  }
+
+  async function handleResumeMatch() {
+    const saved = getSavedSession()
+    if (!saved) return
+    setStarting(true)
+    setStartError(null)
+    try {
+      await loadMatchIntoStore(saved.matchId, saved.period, saved.matchMinute, saved.lineupPlayerIds, saved.lineupId)
+      setHasSavedMatch(false)
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : 'Tókst ekki að halda áfram leik')
+    } finally {
+      setStarting(false)
+    }
+  }
+
+  async function handleEditMatch(matchId: string) {
+    setStarting(true)
+    setStartError(null)
+    setView('home')
+    try {
+      await reopenMatch(matchId)
+      await loadMatchIntoStore(matchId)
+    } catch (err) {
+      setStartError(err instanceof Error ? err.message : 'Tókst ekki að opna leik til breytinga')
+    } finally {
+      setStarting(false)
+    }
   }
 
   async function handleMatchStarted(match: Match, trackedTeam: Team, opponentTeam: Team) {
@@ -160,7 +258,7 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
         .map(r => ({ ...r.player, roster: r }))
       const isTrackedHome = match.home_team_id === trackedTeam.id
       setSession({
-        match,
+        match: { ...match, status: 'in_progress' },
         homeTeam: isTrackedHome ? trackedTeam : opponentTeam,
         awayTeam: isTrackedHome ? opponentTeam : trackedTeam,
         trackedPlayers,
@@ -216,6 +314,7 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
       <SeasonDashboard
         trackedTeam={trackedTeam}
         onNewMatch={() => setView('home')}
+        onEditMatch={handleEditMatch}
       />
     )
   }
@@ -227,10 +326,12 @@ function AppInner({ isAdmin, userEmail }: { isAdmin: boolean; userEmail: string 
   return (
     <HomeScreen
       onNewMatch={() => setView('setup')}
+      onResumeMatch={handleResumeMatch}
       onDashboard={() => setView('dashboard')}
       onAdmin={() => setView('admin')}
       onSignOut={handleSignOut}
       hasSavedTeam={!!savedTeamId}
+      hasSavedMatch={hasSavedMatch}
       isAdmin={isAdmin}
       userEmail={userEmail}
     />
@@ -249,43 +350,80 @@ function AuthGateWithInner() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
   const [profile, setProfile] = useState<Profile | null | undefined>(undefined)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [authTimedOut, setAuthTimedOut] = useState(false)
 
+  // Step 1: Listen for auth state changes — synchronous only, no async work here.
+  // Doing async work inside onAuthStateChange deadlocks the Supabase auth lock.
   useEffect(() => {
-    async function loadProfile(s: Session) {
-      const p = await getProfile(s.user.id)
-      if (!p) {
-        await supabase.auth.signOut()
-        return
-      }
-      const admin = await checkIsAdmin(s.user.id)
-      setProfile(p)
-      setIsAdmin(admin)
-    }
-
-    supabase.auth.getSession().then(async ({ data }) => {
-      const s = data.session
-      if (s) {
-        await loadProfile(s)
-      } else {
-        setProfile(null)
-      }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, s) => {
       setSession(s)
-    })
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_, s) => {
-      setSession(s)
-      if (s) {
-        await loadProfile(s)
-      } else {
+      if (!s) {
         setProfile(null)
         setIsAdmin(false)
       }
     })
-
     return () => subscription.unsubscribe()
   }, [])
 
+  // Step 2: Once session is known, load the profile separately.
+  useEffect(() => {
+    if (session === undefined) return  // still waiting for initial auth state
+
+    const timeout = setTimeout(() => setAuthTimedOut(true), 15_000)
+
+    if (!session) {
+      clearTimeout(timeout)
+      return
+    }
+
+    let cancelled = false
+    async function loadProfile() {
+      try {
+        const [p, admin] = await Promise.all([
+          getProfile(session!.user.id),
+          checkIsAdmin(session!.user.id),
+        ])
+        if (cancelled) return
+        if (!p) {
+          setProfile(null)
+          setIsAdmin(false)
+          await supabase.auth.signOut().catch(() => {})
+          return
+        }
+        setProfile(p)
+        setIsAdmin(admin)
+      } catch {
+        if (cancelled) return
+        setProfile(null)
+        setIsAdmin(false)
+      } finally {
+        clearTimeout(timeout)
+      }
+    }
+    void loadProfile()
+    return () => { cancelled = true; clearTimeout(timeout) }
+  }, [session])
+
   if (session === undefined || (session && profile === undefined)) {
+    if (authTimedOut) {
+      return (
+        <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white gap-4 px-6">
+          <p className="text-slate-400 text-sm text-center">Tenging tók of langan tíma.</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors"
+          >
+            Reyna aftur
+          </button>
+          <button
+            onClick={async () => { await supabase.auth.signOut(); window.location.reload() }}
+            className="text-xs text-slate-500 hover:text-slate-300 underline"
+          >
+            Sign out and retry
+          </button>
+        </div>
+      )
+    }
     return <Spinner />
   }
 

@@ -17,18 +17,21 @@ import { AttackTable, DefenseTable, GKTable, TeamStatsTable } from '@/components
 import { useMinuteFilter, MinuteFilterBar } from '@/components/stats/MinuteFilter'
 import { ShotMap } from '@/components/stats/ShotMap'
 import { ExportModal } from '@/components/stats/ExportModal'
+import { computeIndices } from '@/lib/stats/indices'
+import { IndexPanel } from '@/components/stats/IndexPanel'
 import { Card, Spinner } from '@/components/ui'
 import type { Team, Player } from '@/lib/db/schema'
 
-type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'matches'
-type StatsSubTab = 'attack' | 'defense' | 'gk' | 'shotmap'
+type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'matches' | 'indices'
+type StatsSubTab = 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices'
 
 interface Props {
   trackedTeam: Team
   onNewMatch: () => void
+  onEditMatch: (matchId: string) => void
 }
 
-export function SeasonDashboard({ trackedTeam, onNewMatch }: Props) {
+export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props) {
   const [tab, setTab] = useState<Tab>('overview')
   const [seasonId, setSeasonId] = useState<string>('')
   const [competitionId, setCompetitionId] = useState<string>('')
@@ -152,7 +155,8 @@ export function SeasonDashboard({ trackedTeam, onNewMatch }: Props) {
     { id: 'attack', label: 'Sókn' },
     { id: 'defense', label: 'Vörn' },
     { id: 'gk', label: 'Markvörður' },
-    { id: 'shotmap', label: 'Skotakort' },
+    { id: 'shotmap', label: 'Skotkort' },
+    { id: 'indices', label: 'Indexar' },
     { id: 'matches', label: 'Leikir' },
   ]
 
@@ -266,7 +270,7 @@ export function SeasonDashboard({ trackedTeam, onNewMatch }: Props) {
       </div>
 
       {/* Match chips — shown on stat tabs */}
-      {(tab === 'attack' || tab === 'defense' || tab === 'gk' || tab === 'shotmap') && filteredMatches.length > 0 && (
+      {(tab === 'attack' || tab === 'defense' || tab === 'gk' || tab === 'shotmap' || tab === 'indices') && filteredMatches.length > 0 && (
         <div className="bg-white border-b border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto">
           <span className="text-xs text-gray-400 self-center shrink-0">Sía leiki:</span>
           {filteredMatches.map(m => {
@@ -324,12 +328,21 @@ export function SeasonDashboard({ trackedTeam, onNewMatch }: Props) {
             : <ShotMap allEvents={events} players={allPlayers} trackedTeamId={trackedTeam.id} />
         )}
 
+        {tab === 'indices' && (
+          loadingEvents
+            ? <div className="flex justify-center py-12"><Spinner /></div>
+            : <div className="max-w-2xl mx-auto">
+                <IndicesTab events={events} trackedTeamId={trackedTeam.id} hasMatches={filteredMatches.length > 0} />
+              </div>
+        )}
+
         {tab === 'matches' && (
           <div className="max-w-3xl mx-auto px-4">
             <MatchesTab
               matches={filteredMatches}
               trackedTeamId={trackedTeam.id}
               onDrillDown={id => { setDrillMatchId(id); setDrillSubTab('attack') }}
+              onEditMatch={onEditMatch}
             />
           </div>
         )}
@@ -367,7 +380,7 @@ function OverviewTab({
         <SummaryCard label="Sigrar" value={summary.wins} highlight />
         <SummaryCard label="Tap" value={summary.losses} />
         <SummaryCard label="Mörk" value={summary.goals} />
-        <SummaryCard label="Móttökumörk" value={summary.conceded} />
+        <SummaryCard label="Mörk á okkur" value={summary.conceded} />
         <SummaryCard label="Skotnýting" value={`${summary.shotEff}%`} highlight={summary.shotEff >= 50} />
       </div>
 
@@ -456,16 +469,44 @@ function StatsTab({
   )
 }
 
+// ─── Indices tab ──────────────────────────────────────────────────────────────
+
+function IndicesTab({
+  events, trackedTeamId, hasMatches,
+}: {
+  events: import('@/lib/db/schema').Event[]
+  trackedTeamId: string
+  hasMatches: boolean
+}) {
+  const { range, setRange, filterEvents, clear } = useMinuteFilter()
+  const filtered = useMemo(() => filterEvents(events), [events, range]) // eslint-disable-line react-hooks/exhaustive-deps
+  const indices = useMemo(() => computeIndices(filtered, trackedTeamId), [filtered, trackedTeamId])
+  const minuteFiltered = range.from !== null || range.to !== null
+
+  if (!hasMatches) {
+    return <Card className="p-8 text-center text-gray-500">Engir leikir í þessari síu.</Card>
+  }
+
+  return (
+    <>
+      <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
+      <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
+    </>
+  )
+}
+
 // ─── Matches tab ──────────────────────────────────────────────────────────────
 
 function MatchesTab({
   matches,
   trackedTeamId,
   onDrillDown,
+  onEditMatch,
 }: {
   matches: MatchWithTeams[]
   trackedTeamId: string
   onDrillDown: (matchId: string) => void
+  onEditMatch: (matchId: string) => void
 }) {
   if (matches.length === 0) {
     return (
@@ -490,25 +531,32 @@ function MatchesTab({
             : 'Óþekkt dagsetning'
 
           return (
-            <button
-              key={m.id}
-              onClick={() => onDrillDown(m.id)}
-              className="w-full flex items-center px-4 py-3 gap-4 hover:bg-gray-50 transition-colors text-left"
-            >
-              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${won ? 'bg-green-500' : lost ? 'bg-red-400' : 'bg-gray-300'}`} />
-              <div className="flex-1 min-w-0">
-                <p className="font-medium text-sm truncate">vs {opponent?.name ?? '?'}</p>
-                <p className="text-xs text-gray-500">{date} · {isHome ? 'Heima' : 'Útleikur'}{m.competition ? ` · ${m.competition.name}` : ''}</p>
-              </div>
-              <div className="text-right">
-                <p className={`text-lg font-bold tabular-nums ${won ? 'text-green-700' : lost ? 'text-red-600' : 'text-gray-700'}`}>
-                  {trackedScore ?? '?'} – {opponentScore ?? '?'}
-                </p>
-                <p className={`text-xs font-medium ${won ? 'text-green-600' : lost ? 'text-red-500' : 'text-gray-400'}`}>
-                  {won ? 'S' : lost ? 'T' : 'J'} · Sjá tölur →
-                </p>
-              </div>
-            </button>
+            <div key={m.id} className="flex items-center px-4 py-3 gap-3 hover:bg-gray-50 transition-colors">
+              <button
+                onClick={() => onDrillDown(m.id)}
+                className="flex items-center gap-3 flex-1 text-left min-w-0"
+              >
+                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${won ? 'bg-green-500' : lost ? 'bg-red-400' : 'bg-gray-300'}`} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-medium text-sm truncate">vs {opponent?.name ?? '?'}</p>
+                  <p className="text-xs text-gray-500">{date} · {isHome ? 'Heima' : 'Útleikur'}{m.competition ? ` · ${m.competition.name}` : ''}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  <p className={`text-lg font-bold tabular-nums ${won ? 'text-green-700' : lost ? 'text-red-600' : 'text-gray-700'}`}>
+                    {trackedScore ?? '?'} – {opponentScore ?? '?'}
+                  </p>
+                  <p className={`text-xs font-medium ${won ? 'text-green-600' : lost ? 'text-red-500' : 'text-gray-400'}`}>
+                    {won ? 'S' : lost ? 'T' : 'J'} · Sjá tölur →
+                  </p>
+                </div>
+              </button>
+              <button
+                onClick={() => onEditMatch(m.id)}
+                className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
+              >
+                Breyta
+              </button>
+            </div>
           )
         })}
       </div>
@@ -540,6 +588,16 @@ function DrillDownView({
   const attackRows = useMemo(() => computeAttack(filtered, allPlayers, trackedTeamId), [filtered, allPlayers, trackedTeamId])
   const defenseRows = useMemo(() => computeDefense(filtered, allPlayers, trackedTeamId), [filtered, allPlayers, trackedTeamId])
   const gkRows = useMemo(() => computeGK(filtered, goalkeepers, trackedTeamId), [filtered, goalkeepers, trackedTeamId])
+  const indices = useMemo(() => computeIndices(filtered, trackedTeamId), [filtered, trackedTeamId])
+  const minuteFiltered = range.from !== null || range.to !== null
+
+  const DRILL_TABS: { id: StatsSubTab; label: string }[] = [
+    { id: 'attack', label: 'Sókn' },
+    { id: 'defense', label: 'Vörn' },
+    { id: 'gk', label: 'Markvörður' },
+    { id: 'shotmap', label: 'Skotkort' },
+    { id: 'indices', label: 'Indexar' },
+  ]
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -551,10 +609,10 @@ function DrillDownView({
         </div>
       </div>
       <div className="flex border-b border-gray-200 bg-white overflow-x-auto">
-        {(['attack', 'defense', 'gk', 'shotmap'] as StatsSubTab[]).map(t => (
-          <button key={t} onClick={() => setSubTab(t)}
-            className={`flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap px-3 ${subTab === t ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
-            {t === 'attack' ? 'Sókn' : t === 'defense' ? 'Vörn' : t === 'gk' ? 'Markvörður' : 'Skotakort'}
+        {DRILL_TABS.map(t => (
+          <button key={t.id} onClick={() => setSubTab(t.id)}
+            className={`flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap px-3 ${subTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+            {t.label}
           </button>
         ))}
       </div>
@@ -562,6 +620,13 @@ function DrillDownView({
         <div className="flex justify-center py-12"><Spinner /></div>
       ) : subTab === 'shotmap' ? (
         <ShotMap allEvents={events} players={allPlayers} trackedTeamId={trackedTeamId} />
+      ) : subTab === 'indices' ? (
+        <div className="max-w-2xl mx-auto">
+          <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
+          <div className="px-4 py-2">
+            <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
+          </div>
+        </div>
       ) : (
         <div className="space-y-0">
           <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />

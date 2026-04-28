@@ -153,7 +153,7 @@ function PlayerPickerGrid({ players, onPick, onNone, noneLabel = 'Enginn' }: {
 
 function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
   onZone: (z: ShotZone) => void
-  onBlocked: () => void
+  onBlocked?: () => void
   onWide: () => void
   onPost: () => void
 }) {
@@ -177,12 +177,14 @@ function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
           </button>
         ))}
       </div>
-      <div className="grid grid-cols-3 gap-1 mt-1">
-        <button onPointerDown={onBlocked}
-          className="py-3 rounded-xl border-2 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600
-            active:scale-95 transition-transform">
-          Blokk
-        </button>
+      <div className={`grid ${onBlocked ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mt-1`}>
+        {onBlocked && (
+          <button onPointerDown={onBlocked}
+            className="py-3 rounded-xl border-2 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600
+              active:scale-95 transition-transform">
+            Blokkað
+          </button>
+        )}
         <button onPointerDown={onPost}
           className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
             active:scale-95 transition-transform">
@@ -191,7 +193,7 @@ function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
         <button onPointerDown={onWide}
           className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
             active:scale-95 transition-transform">
-          Víðlægt
+          Framhjá
         </button>
       </div>
     </div>
@@ -440,7 +442,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     const { pid, tid } = flow
     return (
       <div className="p-4">
-        <StepTitle>Hvar kom skotið frá?</StepTitle>
+        <StepTitle>Hvaðan kom skotið?</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label} size="lg"
@@ -506,7 +508,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     return (
       <div className="p-4">
         <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
-        <StepTitle>Stoðsending / sköpuð færi</StepTitle>
+        <StepTitle>Hver átti stoðsendinguna?</StepTitle>
         <PlayerPickerGrid
           players={others}
           noneLabel="Enginn"
@@ -556,7 +558,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     return (
       <div className="p-4">
         <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
-        <StepTitle>Hvar fór skotið?</StepTitle>
+        <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
           onZone={(z) => setFlow({ s: 'atk_shot_outcome', pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone: z })}
           onBlocked={() => commitOffTarget('blocked')}
@@ -601,10 +603,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     return (
       <div className="p-4">
         <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
-        <StepTitle>Niðurstaða skots</StepTitle>
+        <StepTitle>Niðurstaða</StepTitle>
         <div className="grid grid-cols-2 gap-4">
-          <Btn color="bg-green-600" label="Markmið" size="lg" onTap={() => commitShot('goal')} />
-          <Btn color="bg-slate-600" label="Varin"    size="lg" onTap={() => commitShot('saved')} />
+          <Btn color="bg-green-600" label="Mark"   size="lg" onTap={() => commitShot('goal')} />
+          <Btn color="bg-slate-600" label="Varið"  size="lg" onTap={() => commitShot('saved')} />
         </div>
       </div>
     )
@@ -621,6 +623,8 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
             onTap={() => done({ event_type: 'ATTACKING_ACTION', player_id: pid, team_id: tid, sub_type: 'offensive_rebound' })} />
           <Btn color="bg-green-700" label="Fengnar 2 mín"
             onTap={() => done({ event_type: 'ATTACKING_ACTION', player_id: pid, team_id: tid, sub_type: 'drew_suspension' })} />
+          <Btn color="bg-purple-700" label="3 mörk í röð"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: opponentTeamId, sub_type: 'empty_phase' })} />
         </div>
       </div>
     )
@@ -662,7 +666,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     const { pid, tid } = flow
     return (
       <div className="p-4">
-        <StepTitle>Hvar kom skotið frá?</StepTitle>
+        <StepTitle>Hvaðan kom skotið frá?</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label} size="lg"
@@ -713,9 +717,8 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
         <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
           onZone={(z) => setFlow({ s: 'gk_shot_outcome', pid, tid, range, phase, numerical, zone: z })}
-          onBlocked={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
-          onWide={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
-          onPost={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone: null })}
+          onWide={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical })}
+          onPost={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical })}
         />
       </div>
     )
@@ -730,7 +733,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
         <div className="grid grid-cols-2 gap-4">
           <Btn color="bg-purple-600" label="Varin"        size="lg"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
-          <Btn color="bg-red-600"    label="Markmið gegn" size="lg"
+          <Btn color="bg-red-600"    label="Mark" size="lg"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'goal_conceded', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
         </div>
       </div>
@@ -743,7 +746,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
       <div className="p-4">
         <StepTitle>Annað — markmaður</StepTitle>
         <div className="grid grid-cols-1 gap-3">
-          <Btn color="bg-purple-600" label="Tóm fasi"
+          <Btn color="bg-purple-600" label="Tómur fasi (3 mörk á okkur í röð)"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'empty_phase' })} />
           <Btn color="bg-purple-600" label="Jákvæð viðbrögð"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'positive_response' })} />
@@ -823,9 +826,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
           <Btn color="bg-blue-600" label="Hár Kontakt"      onTap={() => defAction('high_contact')} />
           <Btn color="bg-blue-600" label="Stolinn bolti"    onTap={() => defAction('interception')} />
           <Btn color="bg-blue-600" label="Blokk"            onTap={() => defAction('block')} />
-          <Btn color="bg-blue-600" label="Frákast"          onTap={() => defAction('rebound')} />
-          <Btn color="bg-blue-600" label="Fiskuð sóknarbrot" onTap={() => defAction('drew_offensive_foul')} />
-          <Btn color="bg-blue-600" label="Værukærð"         onTap={() => defAction('protest')} />
+          <Btn color="bg-blue-600" label="Frákast"              onTap={() => defAction('rebound')} />
+          <Btn color="bg-blue-600" label="Fiskuð sóknarbrot"  onTap={() => defAction('drew_offensive_foul')} />
+          <Btn color="bg-blue-600" label="Andstæðingur tapar bolta" onTap={() => defAction('opponent_lost_ball')} />
+          <Btn color="bg-blue-600" label="Værukærð"            onTap={() => defAction('protest')} />
         </div>
       </div>
     )
@@ -851,13 +855,15 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     return (
       <div className="p-4">
         <StepTitle>Refsing</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-2 gap-3">
           <Btn color="bg-yellow-500" label="Gult spjald"
             onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'yellow_card' })} />
           <Btn color="bg-red-600"    label="2 mín"
             onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: '2min' })} />
           <Btn color="bg-red-800"    label="Rautt spjald"
             onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'red_card' })} />
+          <Btn color="bg-blue-500"   label="Blátt spjald"
+            onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'blue_card' })} />
         </div>
       </div>
     )

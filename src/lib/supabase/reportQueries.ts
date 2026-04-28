@@ -203,6 +203,14 @@ export async function getMatchReportData(matchId: string, teamId: string): Promi
 
 // ─── Finalize match ───────────────────────────────────────────────────────────
 
+export async function reopenMatch(matchId: string): Promise<void> {
+  const { error } = await supabase
+    .from('matches')
+    .update({ status: 'in_progress' })
+    .eq('id', matchId)
+  if (error) throw error
+}
+
 export async function finalizeMatch(
   matchId: string,
   homeScore: number,

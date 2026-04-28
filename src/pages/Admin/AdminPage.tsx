@@ -35,7 +35,7 @@ export function AdminPage({ onBack }: Props) {
       <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
         <div>
           <h1 className="text-lg font-bold">Stjórnborð</h1>
-          <p className="text-xs text-slate-400">Notendastjórnun</p>
+          <p className="text-xs text-slate-400">Admin Page</p>
         </div>
         <button
           onClick={onBack}

@@ -26,7 +26,7 @@ export type TurnoverSubType =
   | 'other'
 export type SuspensionSubType = '2min' | 'yellow_card' | 'red_card' | 'blue_card' | 'disqualification'
 export type FoulSubType = 'attacking_foul' | '7m_awarded' | 'passive_play_warning' | 'drew_penalty'
-export type GoalkeeperSubType = 'save' | 'goal_conceded' | 'parry' | 'empty_phase' | 'positive_response'
+export type GoalkeeperSubType = 'save' | 'goal_conceded' | 'parry' | 'missed' | 'empty_phase' | 'positive_response'
 export type TimeoutSubType = 'team_timeout' | 'referee_timeout'
 export type PeriodMarkerSubType = 'period_start' | 'period_end' | 'match_end'
 export type DefensiveActionSubType =
@@ -37,6 +37,7 @@ export type DefensiveActionSubType =
   | 'duel_lost'           // tapar árás 1á1
   | 'rebound'             // frákast — defensive rebound
   | 'drew_offensive_foul' // forced attacker's offensive foul
+  | 'opponent_lost_ball'  // andstæðingur tapar bolta
   | 'protest'             // værukærð
 
 export type AttackingActionSubType =

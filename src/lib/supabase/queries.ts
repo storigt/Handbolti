@@ -186,6 +186,37 @@ export function setTrackedTeamId(id: string): void {
   localStorage.setItem(TRACKED_TEAM_KEY, id)
 }
 
+export async function getOwnedTeam(): Promise<Team | null> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const { data } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('owner_user_id', user.id)
+    .maybeSingle()
+  return data
+}
+
+export async function getMatchById(matchId: string): Promise<Match | null> {
+  const { data } = await supabase.from('matches').select('*').eq('id', matchId).maybeSingle()
+  return data
+}
+
+export async function getTeamById(teamId: string): Promise<Team | null> {
+  const { data } = await supabase.from('teams').select('*').eq('id', teamId).maybeSingle()
+  return data
+}
+
+export async function getMatchEvents(matchId: string): Promise<import('@/lib/db/schema').Event[]> {
+  const { data, error } = await supabase
+    .from('events')
+    .select('*')
+    .eq('match_id', matchId)
+    .order('created_at')
+  if (error) throw error
+  return (data ?? []) as import('@/lib/db/schema').Event[]
+}
+
 // ─── Auth / profiles ──────────────────────────────────────────────────────────
 
 export async function getProfile(userId: string): Promise<Profile | null> {

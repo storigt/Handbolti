@@ -136,17 +136,17 @@ export function LoginPage() {
               {loading ? (
                 <span className="flex items-center justify-center gap-2">
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Auðbið…
+                  Augnablik…
                 </span>
               ) : mode === 'signin' ? 'Skrá inn'
                 : mode === 'signup' ? 'Búa til aðgang'
-                : 'Senda tengil'}
+                : 'Send Link'}
             </button>
           </form>
 
           {mode === 'magic' && (
             <p className="text-xs text-slate-500 text-center">
-              Við sendum þér tengil í tölvupósti — engin þörf á lykilorði.
+              Við sendum þér link í tölvupósti — engin þörf á lykilorði.
             </p>
           )}
         </div>

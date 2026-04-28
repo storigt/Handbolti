@@ -7,6 +7,8 @@ import {
   pct, v,
   type AttackRow, type DefenseRow, type GKRow,
 } from '@/lib/stats/matchStats'
+import { computeIndices } from '@/lib/stats/indices'
+import { IndexPanel } from '@/components/stats/IndexPanel'
 import type { Player } from '@/lib/db/schema'
 
 interface Props {
@@ -30,6 +32,7 @@ export function MatchReport({ onNewMatch, onDashboard }: Props) {
   const attackStats = useMemo(() => computeAttack(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
   const defenseStats = useMemo(() => computeDefense(events, trackedPlayers, trackedTeamId), [events, trackedPlayers, trackedTeamId])
   const gkStats = useMemo(() => computeGK(events, goalkeepers, trackedTeamId), [events, goalkeepers, trackedTeamId])
+  const indices = useMemo(() => computeIndices(events, trackedTeamId), [events, trackedTeamId])
 
   const atkTotals = useMemo(() => sumAttack(attackStats), [attackStats])
   const defTotals = useMemo(() => sumDefense(defenseStats), [defenseStats])
@@ -94,11 +97,11 @@ export function MatchReport({ onNewMatch, onDashboard }: Props) {
             <StatBox label="Mörk" value={atkTotals.goals} highlight />
             <StatBox label="Skot" value={atkTotals.shots} />
             <StatBox label="Skotnýting" value={`${shotEff}%`} highlight={shotEff >= 50} />
-            <StatBox label="Tapað" value={atkTotals.turnovers} />
+            <StatBox label="Tapaðir B." value={atkTotals.turnovers} />
             <StatBox label="2 mín" value={defTotals.suspensions2min} />
-            <StatBox label="Hraðaupp." value={`${atkTotals.fbGoals}/${atkTotals.fbShots}`} />
+            <StatBox label="Hraðaupph." value={`${atkTotals.fbGoals}/${atkTotals.fbShots}`} />
             <StatBox label="Víti" value={`${atkTotals.penGoals}/${atkTotals.penShots}`} />
-            <StatBox label="Stoðsend." value={atkTotals.assists} />
+            <StatBox label="Stoðs." value={atkTotals.assists} />
           </div>
         </div>
 
@@ -118,6 +121,11 @@ export function MatchReport({ onNewMatch, onDashboard }: Props) {
             <GKReportSection rows={gkStats} />
           </ReportSection>
         )}
+
+        {/* Vísitölur */}
+        <ReportSection title="Vísitölur">
+          <IndexPanel breakdown={indices} />
+        </ReportSection>
       </div>
     </div>
   )
@@ -186,9 +194,9 @@ function AttackReportTable({ rows, totals }: { rows: AttackRow[]; totals: Omit<A
             <Th>#</Th>
             <Th>Mörk</Th><Th>Skot</Th><Th>%</Th>
             <Th>Víti M/S</Th>
-            <Th>Hraðaupp. M/S</Th>
-            <Th>Stoðsend.</Th>
-            <Th>Tapað</Th>
+            <Th>Hraðaupph. M/S</Th>
+            <Th>Stoðs.</Th>
+            <Th>Tapaðir B.</Th>
             <Th>Fengnar 2mín</Th>
             <Th>Fiskað víti</Th>
           </tr>
