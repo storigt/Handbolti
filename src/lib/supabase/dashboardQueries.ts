@@ -1,5 +1,5 @@
 import { supabase } from './client'
-import type { Match, Team, Competition, Season, Event } from '@/lib/db/schema'
+import type { Match, Team, Competition, Season, Event, CourtLineup } from '@/lib/db/schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -204,6 +204,16 @@ export async function getMatchEventsForMatches(matchIds: string[]): Promise<Even
     .eq('is_edited', false)
   if (error) throw error
   return (data ?? []) as Event[]
+}
+
+export async function getLineupsForMatches(matchIds: string[]): Promise<CourtLineup[]> {
+  if (matchIds.length === 0) return []
+  const { data, error } = await supabase
+    .from('court_lineups')
+    .select('*')
+    .in('match_id', matchIds)
+  if (error) throw error
+  return (data ?? []) as CourtLineup[]
 }
 
 export async function getCompetitionsForTeam(

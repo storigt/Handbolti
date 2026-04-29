@@ -132,9 +132,94 @@ function gkRow(name: string, num: string | number | null, r: Omit<GKRow, 'player
   ]
 }
 
+// ─── Raw event log export ─────────────────────────────────────────────────────
+
+export interface RawMatchInfo {
+  date: string | null
+  opponent: string
+  isHome: boolean
+  score: string  // e.g. "24–21"
+}
+
+const RAW_HEADERS = [
+  'Leikur_ID', 'Dagsetning', 'Andstæðingur', 'Heimaviðureign', 'Niðurstaða',
+  'Leiktímabili', 'Mínúta', 'Klukka_sek', 'Veggsklukka',
+  'Tegund', 'Undirtegund',
+  'Leikmaður', 'Númer', 'Hlutverkur', 'Liðið',
+  'Skotsvæði', 'Leikfasi', 'Fjöldaástand', 'Markasvæði',
+  'Stoðsendingarleikmað', 'Tengdur_leikmaður',
+  'Ógilt',
+]
+
+export function buildRawCSV(
+  events: Event[],
+  players: Player[],
+  matchInfo: Map<string, RawMatchInfo>,
+  trackedTeamId: string,
+): string {
+  const playerById = new Map(players.map(p => [p.id, p]))
+
+  function playerName(id: string | null | undefined): string {
+    if (!id) return ''
+    const p = playerById.get(id)
+    if (!p) return id.slice(0, 8)  // fallback: partial UUID
+    return `${p.first_name} ${p.last_name}`
+  }
+
+  function jerseyOf(id: string | null | undefined): string | number {
+    if (!id) return ''
+    return playerById.get(id)?.jersey_number ?? ''
+  }
+
+  function positionOf(id: string | null | undefined): string {
+    if (!id) return ''
+    const pos = playerById.get(id)?.position
+    return pos === 'goalkeeper' ? 'Markvörður' : pos === 'field' ? 'Leikmaður' : ''
+  }
+
+  const data: (string | number | null | undefined)[][] = events.map(e => {
+    const info = matchInfo.get(e.match_id)
+    const ctx = (e.context ?? {}) as Record<string, string | undefined>
+    const isOurTeam = e.team_id === trackedTeamId
+    const wallClock = e.wall_clock ? new Date(e.wall_clock).toISOString() : ''
+
+    // context-linked players
+    const assistPlayer = playerName(ctx.assist_player_id)
+    // second context player: fouled_player (fouls/penalties) OR player_out (substitutions)
+    const linkedPlayer = playerName(ctx.fouled_player_id ?? ctx.player_out_id)
+
+    return [
+      e.match_id,
+      info?.date ?? '',
+      info?.opponent ?? '',
+      info ? (info.isHome ? 'Heima' : 'Útleikur') : '',
+      info?.score ?? '',
+      e.period ?? '',
+      e.match_minute ?? '',
+      e.match_clock ?? '',
+      wallClock,
+      e.event_type,
+      e.sub_type ?? '',
+      playerName(e.player_id),
+      jerseyOf(e.player_id),
+      positionOf(e.player_id),
+      isOurTeam ? 'Við' : 'Andstæðingur',
+      e.shot_range ?? '',
+      e.phase_type ?? '',
+      e.numerical_state ?? '',
+      e.zone ?? '',
+      assistPlayer,
+      linkedPlayer,
+      e.is_voided ? 'Já' : '',
+    ]
+  })
+
+  return toCSV([RAW_HEADERS, ...data])
+}
+
 // ─── Main export function ─────────────────────────────────────────────────────
 
-export type ExportStatsType = 'attack' | 'defense' | 'gk'
+export type ExportStatsType = 'attack' | 'defense' | 'gk' | 'raw'
 
 export function buildCSV(
   events: Event[],

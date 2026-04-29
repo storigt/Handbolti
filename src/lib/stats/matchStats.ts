@@ -208,7 +208,7 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
   return goalkeepers.map(player => {
     const pid = player.id
     const pe = gkEvents.filter(e => e.player_id === pid)
-    const shotEv = pe.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry')
+    const shotEv = pe.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry' || e.sub_type === 'missed')
 
     function rng(range: string): [number, number] {
       const rs = shotEv.filter(e => e.shot_range === range)
@@ -285,7 +285,7 @@ export function computeTeamStats(events: Event[], trackedTeamId: string): TeamSt
   const myShots = events.filter(e => e.event_type === 'SHOT' && e.team_id === trackedTeamId)
   const gkEvents = events.filter(
     e => e.event_type === 'GOALKEEPER_ACTION' && e.team_id === trackedTeamId
-    && (e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry'),
+    && (e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry' || e.sub_type === 'missed'),
   )
   return {
     myGoals: myShots.filter(e => e.sub_type === 'goal').length,

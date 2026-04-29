@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react'
 import type { Event, Player } from '@/lib/db/schema'
 import type { MatchWithTeams } from '@/lib/supabase/dashboardQueries'
-import { buildCSV, downloadCSV, type ExportStatsType } from '@/lib/stats/exportCsv'
+import { buildCSV, buildRawCSV, downloadCSV, type ExportStatsType, type RawMatchInfo } from '@/lib/stats/exportCsv'
 import { MinuteInput } from './MinuteFilter'
 import type { MinuteRange } from './MinuteFilter'
 
@@ -54,19 +54,44 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
       })
     }
 
-    // Filter players
-    let exportPlayers = relevantPlayers
-    if (selectedPlayerIds.size > 0) {
-      exportPlayers = exportPlayers.filter(p => selectedPlayerIds.has(p.id))
-    }
-
-    const csv = buildCSV(events, exportPlayers, trackedTeamId, statsType, includeTotals)
-
-    const typeLabel = statsType === 'attack' ? 'sokn' : statsType === 'defense' ? 'vorn' : 'markvordur'
     const matchLabel = selectedMatchIds.size > 0 ? `_${selectedMatchIds.size}leikir` : '_allir'
     const minuteLabel = minuteRange.from !== null || minuteRange.to !== null
       ? `_${minuteRange.from ?? 0}-${minuteRange.to ?? 90}min`
       : ''
+
+    let csv: string
+    let typeLabel: string
+
+    if (statsType === 'raw') {
+      // Build match info map for raw export
+      const matchInfoMap = new Map<string, RawMatchInfo>()
+      for (const m of matches) {
+        const isHome = m.home_team_id === trackedTeamId
+        const opponent = isHome ? m.away_team : m.home_team
+        const scored = isHome ? m.home_score : m.away_score
+        const against = isHome ? m.away_score : m.home_score
+        const date = m.match_date
+          ? new Date(m.match_date).toLocaleDateString('is-IS', { day: '2-digit', month: '2-digit', year: 'numeric' })
+          : null
+        matchInfoMap.set(m.id, {
+          date,
+          opponent: opponent?.name ?? '?',
+          isHome,
+          score: `${scored ?? '?'}–${against ?? '?'}`,
+        })
+      }
+      csv = buildRawCSV(events, players, matchInfoMap, trackedTeamId)
+      typeLabel = 'gogn'
+    } else {
+      // Filter players
+      let exportPlayers = relevantPlayers
+      if (selectedPlayerIds.size > 0) {
+        exportPlayers = exportPlayers.filter(p => selectedPlayerIds.has(p.id))
+      }
+      csv = buildCSV(events, exportPlayers, trackedTeamId, statsType, includeTotals)
+      typeLabel = statsType === 'attack' ? 'sokn' : statsType === 'defense' ? 'vorn' : 'markvordur'
+    }
+
     const filename = `${trackedTeamName}_${typeLabel}${matchLabel}${minuteLabel}.csv`
       .replace(/\s+/g, '_')
       .toLowerCase()
@@ -88,22 +113,32 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
 
           {/* Stats type */}
           <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tegund talna</p>
-            <div className="flex gap-2">
-              {(['attack', 'defense', 'gk'] as ExportStatsType[]).map(t => (
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tegund útflutnings</p>
+            <div className="grid grid-cols-2 gap-2">
+              {([
+                { id: 'attack', label: 'Sókn' },
+                { id: 'defense', label: 'Vörn' },
+                { id: 'gk', label: 'Markvörður' },
+                { id: 'raw', label: 'Öll gögn (raw)' },
+              ] as { id: ExportStatsType; label: string }[]).map(t => (
                 <button
-                  key={t}
-                  onClick={() => { setStatsType(t); setSelectedPlayerIds(new Set()) }}
-                  className={`flex-1 py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                    statsType === t
+                  key={t.id}
+                  onClick={() => { setStatsType(t.id); setSelectedPlayerIds(new Set()) }}
+                  className={`py-2 rounded-lg text-sm font-semibold border transition-colors ${
+                    statsType === t.id
                       ? 'bg-blue-600 text-white border-blue-600'
                       : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
                   }`}
                 >
-                  {t === 'attack' ? 'Sókn' : t === 'defense' ? 'Vörn' : 'Markvörður'}
+                  {t.label}
                 </button>
               ))}
             </div>
+            {statsType === 'raw' && (
+              <p className="text-xs text-gray-400 mt-2">
+                Flytur út alla atburði sem röðir — leikur, mínúta, tegund, leikmaður, skotsvæði, o.fl. Hentar til greiningar í Excel eða Python.
+              </p>
+            )}
           </section>
 
           {/* Minute range */}
@@ -132,8 +167,8 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
             </div>
           </section>
 
-          {/* Players */}
-          <section>
+          {/* Players — hidden in raw mode */}
+          {statsType !== 'raw' && <section>
             <div className="flex items-center justify-between mb-2">
               <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
                 {statsType === 'gk' ? 'Markmenn' : 'Leikmenn'}
@@ -183,7 +218,7 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
             {selectedPlayerIds.size > 0 && (
               <p className="text-xs text-blue-600 mt-1">{selectedPlayerIds.size} valinn/valin</p>
             )}
-          </section>
+          </section>}
 
           {/* Matches */}
           <section>
@@ -244,18 +279,20 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
             )}
           </section>
 
-          {/* Options */}
-          <section>
-            <label className="flex items-center gap-3 cursor-pointer">
-              <input
-                type="checkbox"
-                checked={includeTotals}
-                onChange={e => setIncludeTotals(e.target.checked)}
-                className="rounded"
-              />
-              <span className="text-sm text-gray-700">Hafa með samtals línu</span>
-            </label>
-          </section>
+          {/* Options — hidden in raw mode */}
+          {statsType !== 'raw' && (
+            <section>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={includeTotals}
+                  onChange={e => setIncludeTotals(e.target.checked)}
+                  className="rounded"
+                />
+                <span className="text-sm text-gray-700">Hafa með samtals línu</span>
+              </label>
+            </section>
+          )}
         </div>
 
         {/* Footer */}

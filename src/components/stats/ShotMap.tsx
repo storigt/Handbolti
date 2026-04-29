@@ -154,26 +154,31 @@ function GoalFrame({ zoneStats, gkMode }: { zoneStats: ZoneStats; gkMode: boolea
 
 // ─── Summary bar ──────────────────────────────────────────────────────────────
 
-function AttackSummary({ shots }: { shots: Event[] }) {
+function AttackSummary({ shots, viewMode = 'total', matchCount = 1 }: {
+  shots: Event[]; viewMode?: 'total' | 'average'; matchCount?: number
+}) {
   const goals = shots.filter(e => e.sub_type === 'goal').length
   const onTarget = shots.filter(e => e.sub_type === 'goal' || e.sub_type === 'saved').length
   const notOnTarget = shots.filter(e => e.sub_type === 'wide' || e.sub_type === 'post').length
   const blocked = shots.filter(e => e.sub_type === 'blocked').length
   const total = shots.length
   const pct = total > 0 ? Math.round(goals / total * 100) : 0
+  const disp = (n: number) => viewMode === 'average' ? (matchCount > 0 ? (n / matchCount).toFixed(1) : '0') : n
   return (
     <div className="flex flex-wrap gap-4 px-4 py-3 bg-white border-b border-gray-100 text-center">
-      <Stat label="Mörk" value={goals} color="text-green-700" />
-      <Stat label="Skot" value={total} color="text-gray-700" />
+      <Stat label="Mörk" value={disp(goals)} color="text-green-700" />
+      <Stat label="Skot" value={disp(total)} color="text-gray-700" />
       <Stat label="Nýting" value={`${pct}%`} color="text-gray-600" />
-      <Stat label="Á mark" value={onTarget} color="text-gray-500" />
-      <Stat label="Ekki á mark" value={notOnTarget} color="text-gray-400" />
-      <Stat label="Blokk" value={blocked} color="text-gray-300" />
+      <Stat label="Á mark" value={disp(onTarget)} color="text-gray-500" />
+      <Stat label="Ekki á mark" value={disp(notOnTarget)} color="text-gray-400" />
+      <Stat label="Blokk" value={disp(blocked)} color="text-gray-300" />
     </div>
   )
 }
 
-function GKSummary({ events }: { events: Event[] }) {
+function GKSummary({ events, viewMode = 'total', matchCount = 1 }: {
+  events: Event[]; viewMode?: 'total' | 'average'; matchCount?: number
+}) {
   const shotEvents = events.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry')
   const onTarget = shotEvents.filter(e => e.zone !== null && e.zone !== undefined)
   const saves = onTarget.filter(e => e.sub_type === 'save' || e.sub_type === 'parry').length
@@ -181,13 +186,14 @@ function GKSummary({ events }: { events: Event[] }) {
   const faced = onTarget.length
   const offTarget = shotEvents.filter(e => e.zone === null || e.zone === undefined).length
   const savePct = faced > 0 ? Math.round(saves / faced * 100) : 0
+  const disp = (n: number) => viewMode === 'average' ? (matchCount > 0 ? (n / matchCount).toFixed(1) : '0') : n
   return (
     <div className="flex flex-wrap gap-4 px-4 py-3 bg-white border-b border-gray-100 text-center">
-      <Stat label="Varið" value={saves} color="text-green-700" />
-      <Stat label="Á móti" value={faced} color="text-gray-700" />
+      <Stat label="Varið" value={disp(saves)} color="text-green-700" />
+      <Stat label="Á móti" value={disp(faced)} color="text-gray-700" />
       <Stat label="Vörn %" value={`${savePct}%`} color={savePct >= 40 ? 'text-green-600' : 'text-gray-600'} />
-      <Stat label="Móttökumörk" value={conceded} color="text-red-500" />
-      <Stat label="Ekki á mark" value={offTarget} color="text-gray-400" />
+      <Stat label="Móttökumörk" value={disp(conceded)} color="text-red-500" />
+      <Stat label="Ekki á mark" value={disp(offTarget)} color="text-gray-400" />
     </div>
   )
 }
@@ -243,10 +249,14 @@ export function ShotMap({
   allEvents,
   players,
   trackedTeamId,
+  viewMode = 'total',
+  matchCount = 1,
 }: {
   allEvents: Event[]
   players: Player[]
   trackedTeamId: string
+  viewMode?: 'total' | 'average'
+  matchCount?: number
 }) {
   const [mode, setMode] = useState<ShotMapMode>('attack')
   const [playerId, setPlayerId] = useState<string>('')
@@ -319,7 +329,10 @@ export function ShotMap({
       </div>
 
       {/* Summary */}
-      {mode === 'attack' ? <AttackSummary shots={attackShots} /> : <GKSummary events={gkEvents} />}
+      {mode === 'attack'
+        ? <AttackSummary shots={attackShots} viewMode={viewMode} matchCount={matchCount} />
+        : <GKSummary events={gkEvents} viewMode={viewMode} matchCount={matchCount} />
+      }
 
       {/* Goal visualization */}
       <div className="flex-1 overflow-auto p-4">

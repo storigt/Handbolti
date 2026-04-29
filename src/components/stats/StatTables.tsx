@@ -7,6 +7,27 @@ import {
 } from '@/lib/stats/matchStats'
 import type { Event, Player } from '@/lib/db/schema'
 
+// ─── View mode toggle ─────────────────────────────────────────────────────────
+
+export function ViewModeToggle({ mode, onChange }: { mode: 'total' | 'average'; onChange: (m: 'total' | 'average') => void }) {
+  return (
+    <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs">
+      <button
+        onClick={() => onChange('total')}
+        className={`px-3 py-1.5 font-medium transition-colors ${mode === 'total' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+      >
+        Heildartölur
+      </button>
+      <button
+        onClick={() => onChange('average')}
+        className={`px-3 py-1.5 font-medium transition-colors border-l border-gray-300 ${mode === 'average' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
+      >
+        Meðaltal
+      </button>
+    </div>
+  )
+}
+
 // ─── Table primitives ─────────────────────────────────────────────────────────
 
 export function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
@@ -33,11 +54,16 @@ export function Td({ children, className = '' }: { children: React.ReactNode; cl
   )
 }
 
-function TdTriple({ goals, shots, highlight = false }: { goals: number; shots: number; highlight?: boolean }) {
+function TdTriple({ goals, shots, highlight = false, viewMode = 'total', matchCount = 1 }: {
+  goals: number; shots: number; highlight?: boolean
+  viewMode?: 'total' | 'average'; matchCount?: number
+}) {
+  const dg = viewMode === 'average' ? (goals > 0 ? (goals / matchCount).toFixed(1) : '—') : v(goals)
+  const ds = viewMode === 'average' ? (shots > 0 ? (shots / matchCount).toFixed(1) : '—') : v(shots)
   return (
     <>
-      <Td className={goals > 0 ? (highlight ? 'text-green-700 font-bold' : 'text-green-700 font-semibold') : 'text-gray-300'}>{v(goals)}</Td>
-      <Td className="text-gray-500">{v(shots)}</Td>
+      <Td className={goals > 0 ? (highlight ? 'text-green-700 font-bold' : 'text-green-700 font-semibold') : 'text-gray-300'}>{dg}</Td>
+      <Td className="text-gray-500">{ds}</Td>
       <Td className={goals > 0 && shots > 0 ? 'text-gray-600' : 'text-gray-300'}>{pct(goals, shots)}</Td>
     </>
   )
@@ -93,43 +119,51 @@ export function TeamStatsTable({
 
 // ─── Attack table ─────────────────────────────────────────────────────────────
 
-function AtkRow({ r, isTotals = false }: { r: Omit<AttackRow, 'player'> & { player?: Player }; isTotals?: boolean }) {
+function AtkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
+  r: Omit<AttackRow, 'player'> & { player?: Player }; isTotals?: boolean
+  viewMode?: 'total' | 'average'; matchCount?: number
+}) {
   const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
   const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
+  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
+  const tdp = { viewMode, matchCount }
+  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
   return (
     <tr className={`group border-b border-gray-100 ${bg}`}>
       <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {r.player ? `${r.player.first_name} ${r.player.last_name}` : 'Samtals'}
+        {rowLabel}
       </td>
       <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
         {r.player?.jersey_number ?? '—'}
       </td>
-      <TdTriple goals={r.goals} shots={r.shots} highlight={isTotals} />
-      <TdTriple goals={r.penGoals} shots={r.penShots} />
-      <TdTriple goals={r.cornGoals} shots={r.cornShots} />
-      <TdTriple goals={r.nineMGoals} shots={r.nineMShots} />
-      <TdTriple goals={r.s78Goals} shots={r.s78Shots} />
-      <TdTriple goals={r.s6mGoals} shots={r.s6mShots} />
-      <TdTriple goals={r.lineGoals} shots={r.lineShots} />
-      <TdTriple goals={r.fbGoals} shots={r.fbShots} />
-      <TdTriple goals={r.swGoals} shots={r.swShots} />
-      <TdTriple goals={r.spGoals} shots={r.spShots} />
-      <TdTriple goals={r.infGoals} shots={r.infShots} />
-      <TdTriple goals={r.supGoals} shots={r.supShots} />
-      <TdTriple goals={r.s76Goals} shots={r.s76Shots} />
-      <TdTriple goals={r.s66Goals} shots={r.s66Shots} />
-      <Td className={r.chancesCreated > 0 ? 'text-blue-600 font-semibold' : 'text-gray-300'}>{v(r.chancesCreated)}</Td>
-      <Td className={r.assists > 0 ? 'text-blue-600' : 'text-gray-300'}>{v(r.assists)}</Td>
-      <Td className={r.penaltyAssists > 0 ? 'text-blue-600' : 'text-gray-300'}>{v(r.penaltyAssists)}</Td>
-      <Td className={r.drewPenalty > 0 ? 'text-blue-600' : 'text-gray-300'}>{v(r.drewPenalty)}</Td>
-      <Td className={r.turnovers > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}>{v(r.turnovers)}</Td>
-      <Td className={r.offensiveRebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{v(r.offensiveRebounds)}</Td>
-      <Td className={r.drewSuspension > 0 ? 'text-gray-700' : 'text-gray-300'}>{v(r.drewSuspension)}</Td>
+      <TdTriple goals={r.goals} shots={r.shots} highlight={isTotals} {...tdp} />
+      <TdTriple goals={r.penGoals} shots={r.penShots} {...tdp} />
+      <TdTriple goals={r.cornGoals} shots={r.cornShots} {...tdp} />
+      <TdTriple goals={r.nineMGoals} shots={r.nineMShots} {...tdp} />
+      <TdTriple goals={r.s78Goals} shots={r.s78Shots} {...tdp} />
+      <TdTriple goals={r.s6mGoals} shots={r.s6mShots} {...tdp} />
+      <TdTriple goals={r.lineGoals} shots={r.lineShots} {...tdp} />
+      <TdTriple goals={r.fbGoals} shots={r.fbShots} {...tdp} />
+      <TdTriple goals={r.swGoals} shots={r.swShots} {...tdp} />
+      <TdTriple goals={r.spGoals} shots={r.spShots} {...tdp} />
+      <TdTriple goals={r.infGoals} shots={r.infShots} {...tdp} />
+      <TdTriple goals={r.supGoals} shots={r.supShots} {...tdp} />
+      <TdTriple goals={r.s76Goals} shots={r.s76Shots} {...tdp} />
+      <TdTriple goals={r.s66Goals} shots={r.s66Shots} {...tdp} />
+      <Td className={r.chancesCreated > 0 ? 'text-blue-600 font-semibold' : 'text-gray-300'}>{va(r.chancesCreated)}</Td>
+      <Td className={r.assists > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.assists)}</Td>
+      <Td className={r.penaltyAssists > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.penaltyAssists)}</Td>
+      <Td className={r.drewPenalty > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.drewPenalty)}</Td>
+      <Td className={r.turnovers > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}>{va(r.turnovers)}</Td>
+      <Td className={r.offensiveRebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.offensiveRebounds)}</Td>
+      <Td className={r.drewSuspension > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.drewSuspension)}</Td>
     </tr>
   )
 }
 
-export function AttackTable({ rows }: { rows: AttackRow[] }) {
+export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
+  rows: AttackRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+}) {
   const totals = useMemo(() => sumAttack(rows), [rows])
   return (
     <div className="overflow-x-auto">
@@ -165,8 +199,8 @@ export function AttackTable({ rows }: { rows: AttackRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => <AtkRow key={r.player.id} r={r} />)}
-          <AtkRow r={{ ...totals }} isTotals />
+          {rows.map(r => <AtkRow key={r.player.id} r={r} viewMode={viewMode} matchCount={matchCount} />)}
+          <AtkRow r={{ ...totals }} isTotals viewMode={viewMode} matchCount={matchCount} />
         </tbody>
       </table>
     </div>
@@ -175,36 +209,43 @@ export function AttackTable({ rows }: { rows: AttackRow[] }) {
 
 // ─── Defense table ────────────────────────────────────────────────────────────
 
-function DefRow({ r, isTotals = false }: { r: Omit<DefenseRow, 'player'> & { player?: Player }; isTotals?: boolean }) {
+function DefRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
+  r: Omit<DefenseRow, 'player'> & { player?: Player }; isTotals?: boolean
+  viewMode?: 'total' | 'average'; matchCount?: number
+}) {
   const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
   const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
+  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
+  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
   return (
     <tr className={`group border-b border-gray-100 ${bg}`}>
       <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {r.player ? `${r.player.first_name} ${r.player.last_name}` : 'Samtals'}
+        {rowLabel}
       </td>
       <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
         {r.player?.jersey_number ?? '—'}
       </td>
-      <Td>{v(r.duels)}</Td>
-      <Td className={r.duelsWon > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{v(r.duelsWon)}</Td>
+      <Td>{va(r.duels)}</Td>
+      <Td className={r.duelsWon > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.duelsWon)}</Td>
       <Td>{pct(r.duelsWon, r.duels)}</Td>
-      <Td className={r.highContact > 0 ? 'text-orange-600' : 'text-gray-300'}>{v(r.highContact)}</Td>
-      <Td className={r.freekick > 0 ? 'text-orange-500' : 'text-gray-300'}>{v(r.freekick)}</Td>
-      <Td className={r.interceptions > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{v(r.interceptions)}</Td>
-      <Td className={r.blocks > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{v(r.blocks)}</Td>
-      <Td className={r.rebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{v(r.rebounds)}</Td>
-      <Td className={r.penaltyAwarded > 0 ? 'text-red-600 font-bold' : 'text-gray-300'}>{v(r.penaltyAwarded)}</Td>
-      <Td className={r.yellowCards > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{v(r.yellowCards)}</Td>
-      <Td className={r.suspensions2min > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{v(r.suspensions2min)}</Td>
-      <Td className={r.redCards > 0 ? 'text-red-700 font-bold' : 'text-gray-300'}>{v(r.redCards)}</Td>
-      <Td className={r.protest > 0 ? 'text-purple-600' : 'text-gray-300'}>{v(r.protest)}</Td>
-      <Td className={r.drewOffensiveFoul > 0 ? 'text-green-600' : 'text-gray-300'}>{v(r.drewOffensiveFoul)}</Td>
+      <Td className={r.highContact > 0 ? 'text-orange-600' : 'text-gray-300'}>{va(r.highContact)}</Td>
+      <Td className={r.freekick > 0 ? 'text-orange-500' : 'text-gray-300'}>{va(r.freekick)}</Td>
+      <Td className={r.interceptions > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.interceptions)}</Td>
+      <Td className={r.blocks > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.blocks)}</Td>
+      <Td className={r.rebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.rebounds)}</Td>
+      <Td className={r.penaltyAwarded > 0 ? 'text-red-600 font-bold' : 'text-gray-300'}>{va(r.penaltyAwarded)}</Td>
+      <Td className={r.yellowCards > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{va(r.yellowCards)}</Td>
+      <Td className={r.suspensions2min > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{va(r.suspensions2min)}</Td>
+      <Td className={r.redCards > 0 ? 'text-red-700 font-bold' : 'text-gray-300'}>{va(r.redCards)}</Td>
+      <Td className={r.protest > 0 ? 'text-purple-600' : 'text-gray-300'}>{va(r.protest)}</Td>
+      <Td className={r.drewOffensiveFoul > 0 ? 'text-green-600' : 'text-gray-300'}>{va(r.drewOffensiveFoul)}</Td>
     </tr>
   )
 }
 
-export function DefenseTable({ rows }: { rows: DefenseRow[] }) {
+export function DefenseTable({ rows, matchCount = 1, viewMode = 'total' }: {
+  rows: DefenseRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+}) {
   const totals = useMemo(() => sumDefense(rows), [rows])
   return (
     <div className="overflow-x-auto">
@@ -220,8 +261,8 @@ export function DefenseTable({ rows }: { rows: DefenseRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => <DefRow key={r.player.id} r={r} />)}
-          <DefRow r={{ ...totals }} isTotals />
+          {rows.map(r => <DefRow key={r.player.id} r={r} viewMode={viewMode} matchCount={matchCount} />)}
+          <DefRow r={{ ...totals }} isTotals viewMode={viewMode} matchCount={matchCount} />
         </tbody>
       </table>
     </div>
@@ -230,60 +271,67 @@ export function DefenseTable({ rows }: { rows: DefenseRow[] }) {
 
 // ─── GK table ─────────────────────────────────────────────────────────────────
 
-function GkRow({ r, isTotals = false }: { r: Omit<GKRow, 'player'> & { player?: Player }; isTotals?: boolean }) {
+function GkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
+  r: Omit<GKRow, 'player'> & { player?: Player }; isTotals?: boolean
+  viewMode?: 'total' | 'average'; matchCount?: number
+}) {
   const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
   const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
+  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
+  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
   return (
     <tr className={`group border-b border-gray-100 ${bg}`}>
       <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {r.player ? `${r.player.first_name} ${r.player.last_name}` : 'Samtals'}
+        {rowLabel}
       </td>
       <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
         {r.player?.jersey_number ?? '—'}
       </td>
-      <Td className={r.saves > 0 ? 'text-green-700 font-bold' : 'text-gray-300'}>{v(r.saves)}</Td>
-      <Td className="text-gray-600">{v(r.shotsFaced)}</Td>
+      <Td className={r.saves > 0 ? 'text-green-700 font-bold' : 'text-gray-300'}>{va(r.saves)}</Td>
+      <Td className="text-gray-600">{va(r.shotsFaced)}</Td>
       <Td className={r.saves / (r.shotsFaced || 1) >= 0.4 ? 'text-green-700 font-semibold' : 'text-gray-500'}>{pct(r.saves, r.shotsFaced)}</Td>
-      <Td className={r.savedPen > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedPen)}</Td>
-      <Td className="text-gray-500">{v(r.facedPen)}</Td>
+      <Td className={r.savedPen > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedPen)}</Td>
+      <Td className="text-gray-500">{va(r.facedPen)}</Td>
       <Td className="text-gray-500">{pct(r.savedPen, r.facedPen)}</Td>
-      <Td className={r.savedCorn > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedCorn)}</Td>
-      <Td className="text-gray-500">{v(r.facedCorn)}</Td>
+      <Td className={r.savedCorn > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedCorn)}</Td>
+      <Td className="text-gray-500">{va(r.facedCorn)}</Td>
       <Td className="text-gray-500">{pct(r.savedCorn, r.facedCorn)}</Td>
-      <Td className={r.savedNineM > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedNineM)}</Td>
-      <Td className="text-gray-500">{v(r.facedNineM)}</Td>
+      <Td className={r.savedNineM > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedNineM)}</Td>
+      <Td className="text-gray-500">{va(r.facedNineM)}</Td>
       <Td className="text-gray-500">{pct(r.savedNineM, r.facedNineM)}</Td>
-      <Td className={r.savedS78 > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedS78)}</Td>
-      <Td className="text-gray-500">{v(r.facedS78)}</Td>
+      <Td className={r.savedS78 > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS78)}</Td>
+      <Td className="text-gray-500">{va(r.facedS78)}</Td>
       <Td className="text-gray-500">{pct(r.savedS78, r.facedS78)}</Td>
-      <Td className={r.savedS6m > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedS6m)}</Td>
-      <Td className="text-gray-500">{v(r.facedS6m)}</Td>
+      <Td className={r.savedS6m > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS6m)}</Td>
+      <Td className="text-gray-500">{va(r.facedS6m)}</Td>
       <Td className="text-gray-500">{pct(r.savedS6m, r.facedS6m)}</Td>
-      <Td className={r.savedLine > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedLine)}</Td>
-      <Td className="text-gray-500">{v(r.facedLine)}</Td>
+      <Td className={r.savedLine > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedLine)}</Td>
+      <Td className="text-gray-500">{va(r.facedLine)}</Td>
       <Td className="text-gray-500">{pct(r.savedLine, r.facedLine)}</Td>
-      <Td className={r.savedFb > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedFb)}</Td>
-      <Td className="text-gray-500">{v(r.facedFb)}</Td>
+      <Td className={r.savedFb > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedFb)}</Td>
+      <Td className="text-gray-500">{va(r.facedFb)}</Td>
       <Td className="text-gray-500">{pct(r.savedFb, r.facedFb)}</Td>
-      <Td className={r.savedSw > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedSw)}</Td>
-      <Td className="text-gray-500">{v(r.facedSw)}</Td>
+      <Td className={r.savedSw > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedSw)}</Td>
+      <Td className="text-gray-500">{va(r.facedSw)}</Td>
       <Td className="text-gray-500">{pct(r.savedSw, r.facedSw)}</Td>
-      <Td className={r.savedInf > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedInf)}</Td>
-      <Td className="text-gray-500">{v(r.facedInf)}</Td>
+      <Td className={r.savedInf > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedInf)}</Td>
+      <Td className="text-gray-500">{va(r.facedInf)}</Td>
       <Td className="text-gray-500">{pct(r.savedInf, r.facedInf)}</Td>
-      <Td className={r.savedSup > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedSup)}</Td>
-      <Td className="text-gray-500">{v(r.facedSup)}</Td>
+      <Td className={r.savedSup > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedSup)}</Td>
+      <Td className="text-gray-500">{va(r.facedSup)}</Td>
       <Td className="text-gray-500">{pct(r.savedSup, r.facedSup)}</Td>
-      <Td className={r.savedS67 > 0 ? 'text-green-700' : 'text-gray-300'}>{v(r.savedS67)}</Td>
-      <Td className="text-gray-500">{v(r.facedS67)}</Td>
+      <Td className={r.savedS67 > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS67)}</Td>
+      <Td className="text-gray-500">{va(r.facedS67)}</Td>
       <Td className="text-gray-500">{pct(r.savedS67, r.facedS67)}</Td>
-      <Td className={r.emptyPhase > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{v(r.emptyPhase)}</Td>
-      <Td className={r.positiveResponse > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{v(r.positiveResponse)}</Td>
+      <Td className={r.emptyPhase > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{va(r.emptyPhase)}</Td>
+      <Td className={r.positiveResponse > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.positiveResponse)}</Td>
     </tr>
   )
 }
 
-export function GKTable({ rows }: { rows: GKRow[] }) {
+export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
+  rows: GKRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+}) {
   const totals = useMemo(() => sumGK(rows), [rows])
 
   if (rows.length === 0) {
@@ -321,8 +369,8 @@ export function GKTable({ rows }: { rows: GKRow[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map(r => <GkRow key={r.player.id} r={r} />)}
-          {rows.length > 1 && <GkRow r={{ ...totals }} isTotals />}
+          {rows.map(r => <GkRow key={r.player.id} r={r} viewMode={viewMode} matchCount={matchCount} />)}
+          {rows.length > 1 && <GkRow r={{ ...totals }} isTotals viewMode={viewMode} matchCount={matchCount} />}
         </tbody>
       </table>
     </div>
