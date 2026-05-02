@@ -22,8 +22,9 @@ import { computeIndices } from '@/lib/stats/indices'
 import { IndexPanel } from '@/components/stats/IndexPanel'
 import { Card, Spinner } from '@/components/ui'
 import type { Team, Player, CourtLineup } from '@/lib/db/schema'
+import { GrofTab } from './GrofTab'
 
-type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices' | 'players' | 'matches'
+type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices' | 'grof' | 'players' | 'matches'
 type StatsSubTab = 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices'
 type DrillSubTab = StatsSubTab | 'players'
 
@@ -185,6 +186,7 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
     { id: 'gk', label: 'Markvörður' },
     { id: 'shotmap', label: 'Skotkort' },
     { id: 'indices', label: 'Indexar' },
+    { id: 'grof', label: 'Gröf' },
     { id: 'players', label: 'Leikmenn Inná' },
     { id: 'matches', label: 'Leikir' },
   ]
@@ -318,7 +320,7 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
       </div>
 
       {/* Match chips — shown on stat + overview tabs */}
-      {(tab === 'overview' || tab === 'attack' || tab === 'defense' || tab === 'gk' || tab === 'shotmap' || tab === 'indices' || tab === 'players') && filteredMatches.length > 0 && (
+      {(tab === 'overview' || tab === 'attack' || tab === 'defense' || tab === 'gk' || tab === 'shotmap' || tab === 'indices' || tab === 'grof' || tab === 'players') && filteredMatches.length > 0 && (
         <div className="bg-white border-b border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto">
           <span className="text-xs text-gray-400 self-center shrink-0">Sía leiki:</span>
           {filteredMatches.map(m => {
@@ -395,6 +397,15 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
             : <div className="max-w-2xl mx-auto">
                 <IndicesTab events={events} trackedTeamId={trackedTeam.id} hasMatches={activeMatchIds.length > 0} />
               </div>
+        )}
+
+        {tab === 'grof' && (
+          <GrofTab
+            events={events}
+            players={allPlayers}
+            matches={filteredMatches}
+            trackedTeamId={trackedTeam.id}
+          />
         )}
 
         {tab === 'players' && (
