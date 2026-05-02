@@ -146,6 +146,7 @@ const RAW_HEADERS = [
   'Leiktímabili', 'Mínúta', 'Klukka_sek', 'Veggsklukka',
   'Tegund', 'Undirtegund',
   'Leikmaður', 'Númer', 'Hlutverkur', 'Liðið',
+  'Uppruni_árásar', 'Höndin_uppi',
   'Skotsvæði', 'Leikfasi', 'Fjöldaástand', 'Markasvæði',
   'Stoðsendingarleikmað', 'Tengdur_leikmaður',
   'Ógilt',
@@ -188,6 +189,9 @@ export function buildRawCSV(
     // second context player: fouled_player (fouls/penalties) OR player_out (substitutions)
     const linkedPlayer = playerName(ctx.fouled_player_id ?? ctx.player_out_id)
 
+    const attackOrigin = ctx.attack_origin as string | undefined
+    const handUp = ctx.hand_up as boolean | undefined
+
     return [
       e.match_id,
       info?.date ?? '',
@@ -204,6 +208,8 @@ export function buildRawCSV(
       jerseyOf(e.player_id),
       positionOf(e.player_id),
       isOurTeam ? 'Við' : 'Andstæðingur',
+      attackOrigin ?? '',
+      handUp === true ? 'Já' : handUp === false ? 'Nei' : '',
       e.shot_range ?? '',
       e.phase_type ?? '',
       e.numerical_state ?? '',

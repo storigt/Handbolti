@@ -37,6 +37,17 @@ export interface AttackRow {
   turnovers: number
   offensiveRebounds: number
   drewSuspension: number
+  // Attack origin zones
+  origLeftWingGoals: number; origLeftWingShots: number
+  origLeftCenterGoals: number; origLeftCenterShots: number
+  origCenterGoals: number; origCenterShots: number
+  origRightCenterGoals: number; origRightCenterShots: number
+  origRightWingGoals: number; origRightWingShots: number
+  origLineGoals: number; origLineShots: number
+  origOtherGoals: number; origOtherShots: number
+  // Hand up
+  handUpGoals: number; handUpShots: number
+  handDownGoals: number; handDownShots: number
 }
 
 export function computeAttack(events: Event[], players: Player[], trackedTeamId: string): AttackRow[] {
@@ -80,6 +91,23 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
     const penaltyAssists = shots.filter(e => e.shot_range === 'penalty' && getCtx(e).assist_player_id === pid).length
     const drewPenalty = fiskedViti.filter(e => getCtx(e).fouled_player_id === pid).length
 
+    function orig(zone: string): [number, number] {
+      const rs = ps.filter(e => getCtx(e).attack_origin === zone)
+      return [rs.filter(e => e.sub_type === 'goal').length, rs.length]
+    }
+
+    const [origLeftWingGoals, origLeftWingShots] = orig('left_wing')
+    const [origLeftCenterGoals, origLeftCenterShots] = orig('left_center')
+    const [origCenterGoals, origCenterShots] = orig('center')
+    const [origRightCenterGoals, origRightCenterShots] = orig('right_center')
+    const [origRightWingGoals, origRightWingShots] = orig('right_wing')
+    const [origLineGoals, origLineShots] = orig('line')
+    const [origOtherGoals, origOtherShots] = orig('other')
+
+    const onTargetPs = ps.filter(e => e.sub_type === 'goal' || e.sub_type === 'saved')
+    const handUpShotsArr = onTargetPs.filter(e => getCtx(e).hand_up === true)
+    const handDownShotsArr = onTargetPs.filter(e => getCtx(e).hand_up === false)
+
     return {
       player,
       goals: ps.filter(e => e.sub_type === 'goal').length,
@@ -96,6 +124,17 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
       turnovers: turnovers.filter(e => e.player_id === pid).length,
       offensiveRebounds: atkAct.filter(e => e.player_id === pid && e.sub_type === 'offensive_rebound').length,
       drewSuspension: atkAct.filter(e => e.player_id === pid && e.sub_type === 'drew_suspension').length,
+      origLeftWingGoals, origLeftWingShots,
+      origLeftCenterGoals, origLeftCenterShots,
+      origCenterGoals, origCenterShots,
+      origRightCenterGoals, origRightCenterShots,
+      origRightWingGoals, origRightWingShots,
+      origLineGoals, origLineShots,
+      origOtherGoals, origOtherShots,
+      handUpGoals: handUpShotsArr.filter(e => e.sub_type === 'goal').length,
+      handUpShots: handUpShotsArr.length,
+      handDownGoals: handDownShotsArr.filter(e => e.sub_type === 'goal').length,
+      handDownShots: handDownShotsArr.length,
     }
   })
 }
@@ -109,6 +148,15 @@ export function sumAttack(rows: AttackRow[]): Omit<AttackRow, 'player'> {
     s76Goals: 0, s76Shots: 0, s66Goals: 0, s66Shots: 0,
     chancesCreated: 0, assists: 0, penaltyAssists: 0, drewPenalty: 0,
     turnovers: 0, offensiveRebounds: 0, drewSuspension: 0,
+    origLeftWingGoals: 0, origLeftWingShots: 0,
+    origLeftCenterGoals: 0, origLeftCenterShots: 0,
+    origCenterGoals: 0, origCenterShots: 0,
+    origRightCenterGoals: 0, origRightCenterShots: 0,
+    origRightWingGoals: 0, origRightWingShots: 0,
+    origLineGoals: 0, origLineShots: 0,
+    origOtherGoals: 0, origOtherShots: 0,
+    handUpGoals: 0, handUpShots: 0,
+    handDownGoals: 0, handDownShots: 0,
   }
   for (const r of rows) {
     for (const k of Object.keys(z) as (keyof typeof z)[]) {
@@ -200,6 +248,17 @@ export interface GKRow {
   savedS67: number; facedS67: number
   emptyPhase: number
   positiveResponse: number
+  // Attack origin zones (saves / faced)
+  origLeftWingSaves: number; origLeftWingFaced: number
+  origLeftCenterSaves: number; origLeftCenterFaced: number
+  origCenterSaves: number; origCenterFaced: number
+  origRightCenterSaves: number; origRightCenterFaced: number
+  origRightWingSaves: number; origRightWingFaced: number
+  origLineSaves: number; origLineFaced: number
+  origOtherSaves: number; origOtherFaced: number
+  // Hand up (attacker's hand)
+  handUpSaves: number; handUpFaced: number
+  handDownSaves: number; handDownFaced: number
 }
 
 export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId: string): GKRow[] {
@@ -235,6 +294,23 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
     const [savedSup, facedSup] = num('superiority')
     const [savedS67, facedS67] = num('6v7')
 
+    function origGK(zone: string): [number, number] {
+      const rs = shotEv.filter(e => getCtx(e).attack_origin === zone)
+      return [rs.filter(e => e.sub_type === 'save').length, rs.length]
+    }
+
+    const [origLeftWingSaves, origLeftWingFaced] = origGK('left_wing')
+    const [origLeftCenterSaves, origLeftCenterFaced] = origGK('left_center')
+    const [origCenterSaves, origCenterFaced] = origGK('center')
+    const [origRightCenterSaves, origRightCenterFaced] = origGK('right_center')
+    const [origRightWingSaves, origRightWingFaced] = origGK('right_wing')
+    const [origLineSaves, origLineFaced] = origGK('line')
+    const [origOtherSaves, origOtherFaced] = origGK('other')
+
+    const onTargetEv = shotEv.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded')
+    const handUpEv = onTargetEv.filter(e => getCtx(e).hand_up === true)
+    const handDownEv = onTargetEv.filter(e => getCtx(e).hand_up === false)
+
     return {
       player,
       saves: shotEv.filter(e => e.sub_type === 'save').length,
@@ -247,6 +323,17 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
       savedS67, facedS67,
       emptyPhase: pe.filter(e => e.sub_type === 'empty_phase').length,
       positiveResponse: pe.filter(e => e.sub_type === 'positive_response').length,
+      origLeftWingSaves, origLeftWingFaced,
+      origLeftCenterSaves, origLeftCenterFaced,
+      origCenterSaves, origCenterFaced,
+      origRightCenterSaves, origRightCenterFaced,
+      origRightWingSaves, origRightWingFaced,
+      origLineSaves, origLineFaced,
+      origOtherSaves, origOtherFaced,
+      handUpSaves: handUpEv.filter(e => e.sub_type === 'save').length,
+      handUpFaced: handUpEv.length,
+      handDownSaves: handDownEv.filter(e => e.sub_type === 'save').length,
+      handDownFaced: handDownEv.length,
     }
   })
 }
@@ -261,6 +348,15 @@ export function sumGK(rows: GKRow[]): Omit<GKRow, 'player'> {
     savedInf: 0, facedInf: 0, savedSup: 0, facedSup: 0,
     savedS67: 0, facedS67: 0,
     emptyPhase: 0, positiveResponse: 0,
+    origLeftWingSaves: 0, origLeftWingFaced: 0,
+    origLeftCenterSaves: 0, origLeftCenterFaced: 0,
+    origCenterSaves: 0, origCenterFaced: 0,
+    origRightCenterSaves: 0, origRightCenterFaced: 0,
+    origRightWingSaves: 0, origRightWingFaced: 0,
+    origLineSaves: 0, origLineFaced: 0,
+    origOtherSaves: 0, origOtherFaced: 0,
+    handUpSaves: 0, handUpFaced: 0,
+    handDownSaves: 0, handDownFaced: 0,
   }
   for (const r of rows) {
     for (const k of Object.keys(z) as (keyof typeof z)[]) {

@@ -54,6 +54,16 @@ export function Td({ children, className = '' }: { children: React.ReactNode; cl
   )
 }
 
+function TdGKPair({ saved, faced, va }: { saved: number; faced: number; va: (n: number) => number | string }) {
+  return (
+    <>
+      <Td className={saved > 0 ? 'text-green-700' : 'text-gray-300'}>{va(saved)}</Td>
+      <Td className="text-gray-500">{va(faced)}</Td>
+      <Td className="text-gray-500">{pct(saved, faced)}</Td>
+    </>
+  )
+}
+
 function TdTriple({ goals, shots, highlight = false, viewMode = 'total', matchCount = 1 }: {
   goals: number; shots: number; highlight?: boolean
   viewMode?: 'total' | 'average'; matchCount?: number
@@ -157,6 +167,15 @@ function AtkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
       <Td className={r.turnovers > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}>{va(r.turnovers)}</Td>
       <Td className={r.offensiveRebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.offensiveRebounds)}</Td>
       <Td className={r.drewSuspension > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.drewSuspension)}</Td>
+      <TdTriple goals={r.origLeftWingGoals}   shots={r.origLeftWingShots}   {...tdp} />
+      <TdTriple goals={r.origLeftCenterGoals} shots={r.origLeftCenterShots} {...tdp} />
+      <TdTriple goals={r.origCenterGoals}     shots={r.origCenterShots}     {...tdp} />
+      <TdTriple goals={r.origRightCenterGoals} shots={r.origRightCenterShots} {...tdp} />
+      <TdTriple goals={r.origRightWingGoals}  shots={r.origRightWingShots}  {...tdp} />
+      <TdTriple goals={r.origLineGoals}       shots={r.origLineShots}       {...tdp} />
+      <TdTriple goals={r.origOtherGoals}      shots={r.origOtherShots}      {...tdp} />
+      <TdTriple goals={r.handUpGoals}         shots={r.handUpShots}         {...tdp} />
+      <TdTriple goals={r.handDownGoals}       shots={r.handDownShots}       {...tdp} />
     </tr>
   )
 }
@@ -187,6 +206,15 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="7á6" colSpan={3} />
             <ThGroup label="6á6" colSpan={3} />
             <ThGroup label="Annað" colSpan={7} />
+            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Vinstri miðja" colSpan={3} />
+            <ThGroup label="Miðja" colSpan={3} />
+            <ThGroup label="Hægri miðja" colSpan={3} />
+            <ThGroup label="Hægra Horn" colSpan={3} />
+            <ThGroup label="Lína (uppruni)" colSpan={3} />
+            <ThGroup label="Annað (uppruni)" colSpan={3} />
+            <ThGroup label="Höndin uppi" colSpan={3} />
+            <ThGroup label="Höndin niðri" colSpan={3} />
           </tr>
           <tr className="border-b border-gray-200 bg-gray-50">
             <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
@@ -196,6 +224,9 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
             ))}
             <Th>Sk.Færi</Th><Th>Stoð</Th><Th>Vítas</Th><Th>Fisk.V</Th>
             <Th>Tap</Th><Th>Frákast</Th><Th>2mín fisk</Th>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <><Th key={`om${i}`}>M</Th><Th key={`os${i}`}>Skot</Th><Th key={`op${i}`}>%</Th></>
+            ))}
           </tr>
         </thead>
         <tbody>
@@ -325,6 +356,15 @@ function GkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
       <Td className="text-gray-500">{pct(r.savedS67, r.facedS67)}</Td>
       <Td className={r.emptyPhase > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{va(r.emptyPhase)}</Td>
       <Td className={r.positiveResponse > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.positiveResponse)}</Td>
+      <TdGKPair saved={r.origLeftWingSaves}   faced={r.origLeftWingFaced}   va={va} />
+      <TdGKPair saved={r.origLeftCenterSaves} faced={r.origLeftCenterFaced} va={va} />
+      <TdGKPair saved={r.origCenterSaves}     faced={r.origCenterFaced}     va={va} />
+      <TdGKPair saved={r.origRightCenterSaves} faced={r.origRightCenterFaced} va={va} />
+      <TdGKPair saved={r.origRightWingSaves}  faced={r.origRightWingFaced}  va={va} />
+      <TdGKPair saved={r.origLineSaves}       faced={r.origLineFaced}       va={va} />
+      <TdGKPair saved={r.origOtherSaves}      faced={r.origOtherFaced}      va={va} />
+      <TdGKPair saved={r.handUpSaves}         faced={r.handUpFaced}         va={va} />
+      <TdGKPair saved={r.handDownSaves}       faced={r.handDownFaced}       va={va} />
     </tr>
   )
 }
@@ -358,6 +398,15 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="Yfirtala" colSpan={3} />
             <ThGroup label="6á7" colSpan={3} />
             <ThGroup label="Annað" colSpan={2} />
+            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Vinstri miðja" colSpan={3} />
+            <ThGroup label="Miðja" colSpan={3} />
+            <ThGroup label="Hægri miðja" colSpan={3} />
+            <ThGroup label="Hægra Horn" colSpan={3} />
+            <ThGroup label="Lína (uppruni)" colSpan={3} />
+            <ThGroup label="Annað (uppruni)" colSpan={3} />
+            <ThGroup label="Höndin uppi" colSpan={3} />
+            <ThGroup label="Höndin niðri" colSpan={3} />
           </tr>
           <tr className="border-b border-gray-200 bg-gray-50">
             <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
@@ -366,6 +415,9 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
               <><Th key={`sv${i}`}>Varin</Th><Th key={`sf${i}`}>Fjöldi</Th><Th key={`sp${i}`}>%</Th></>
             ))}
             <Th>Tóm fasi</Th><Th>Jákv. viðbr.</Th>
+            {Array.from({ length: 9 }).map((_, i) => (
+              <><Th key={`gkos${i}`}>Varin</Th><Th key={`gkof${i}`}>Fjöldi</Th><Th key={`gkop${i}`}>%</Th></>
+            ))}
           </tr>
         </thead>
         <tbody>

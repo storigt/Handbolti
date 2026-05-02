@@ -15,23 +15,27 @@ type FlowStep =
   | { s: 'category'; pid: string; tid: string }
   // ── Attack ──────────────────────────────────────────────────────────────────
   | { s: 'atk_sub'; pid: string; tid: string }
-  | { s: 'atk_shot_range'; pid: string; tid: string }
-  | { s: 'atk_shot_phase'; pid: string; tid: string; range: ShotRange }
-  | { s: 'atk_shot_numerical'; pid: string; tid: string; range: ShotRange; phase: PhaseType }
-  | { s: 'atk_shot_assist'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
-  | { s: 'atk_shot_vitasending'; pid: string; tid: string; phase: PhaseType; numerical: NumericalState }
-  | { s: 'atk_shot_fiskad_viti'; pid: string; tid: string; phase: PhaseType; numerical: NumericalState; vitasendingId: string | null }
-  | { s: 'atk_shot_zone'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null }
-  | { s: 'atk_shot_outcome'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null; zone: ShotZone }
+  | { s: 'atk_shot_origin'; pid: string; tid: string }
+  | { s: 'atk_shot_range'; pid: string; tid: string; origin: string }
+  | { s: 'atk_shot_phase'; pid: string; tid: string; origin: string; range: ShotRange }
+  | { s: 'atk_shot_numerical'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType }
+  | { s: 'atk_shot_assist'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
+  | { s: 'atk_shot_vitasending'; pid: string; tid: string; origin: string; phase: PhaseType; numerical: NumericalState }
+  | { s: 'atk_shot_fiskad_viti'; pid: string; tid: string; origin: string; phase: PhaseType; numerical: NumericalState; vitasendingId: string | null }
+  | { s: 'atk_shot_zone'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null }
+  | { s: 'atk_shot_outcome'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null; zone: ShotZone }
+  | { s: 'atk_shot_hand_up'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; assistId: string | null; vitasendingId: string | null; fiskadVitiId: string | null; zone: ShotZone; subType: 'goal' | 'saved' }
   | { s: 'atk_other'; pid: string; tid: string }
   | { s: 'atk_turnover'; pid: string; tid: string }
   // ── GK ──────────────────────────────────────────────────────────────────────
   | { s: 'gk_sub'; pid: string; tid: string }
-  | { s: 'gk_shot_range'; pid: string; tid: string }
-  | { s: 'gk_shot_phase'; pid: string; tid: string; range: ShotRange }
-  | { s: 'gk_shot_numerical'; pid: string; tid: string; range: ShotRange; phase: PhaseType }
-  | { s: 'gk_shot_zone'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
-  | { s: 'gk_shot_outcome'; pid: string; tid: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; zone: ShotZone }
+  | { s: 'gk_shot_origin'; pid: string; tid: string }
+  | { s: 'gk_shot_range'; pid: string; tid: string; origin: string }
+  | { s: 'gk_shot_phase'; pid: string; tid: string; origin: string; range: ShotRange }
+  | { s: 'gk_shot_numerical'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType }
+  | { s: 'gk_shot_zone'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState }
+  | { s: 'gk_shot_outcome'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; zone: ShotZone }
+  | { s: 'gk_shot_hand_up'; pid: string; tid: string; origin: string; range: ShotRange; phase: PhaseType; numerical: NumericalState; zone: ShotZone; subType: 'save' | 'goal_conceded' }
   | { s: 'gk_other'; pid: string; tid: string }
   // ── Defense ─────────────────────────────────────────────────────────────────
   | { s: 'def_sub'; pid: string; tid: string }
@@ -74,6 +78,21 @@ const GK_NUMERICALS: { v: NumericalState; label: string }[] = [
   { v: 'superiority', label: 'Yfirtala' },
   { v: '6v7',         label: '6 á 7' },
 ]
+
+const ORIGINS: { v: string; label: string }[] = [
+  { v: 'left_wing',    label: 'Vinstra Horn' },
+  { v: 'left_center',  label: 'Vinstri miðja' },
+  { v: 'center',       label: 'Miðja' },
+  { v: 'right_center', label: 'Hægri miðja' },
+  { v: 'right_wing',   label: 'Hægra Horn' },
+  { v: 'line',         label: 'Lína' },
+  { v: 'other',        label: 'Annað' },
+]
+
+const ORIGIN_LABEL: Record<string, string> = {
+  left_wing: 'Vinstra Horn', left_center: 'Vinstri miðja', center: 'Miðja',
+  right_center: 'Hægri miðja', right_wing: 'Hægra Horn', line: 'Lína', other: 'Annað',
+}
 
 const RANGE_LABEL: Record<ShotRange, string> = {
   penalty: 'Víti', corner_wing: 'Horn', '9m_plus': '9m+',
@@ -431,22 +450,38 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
       <div className="p-4">
         <StepTitle>Sókn → veldu aðgerð</StepTitle>
         <div className="grid grid-cols-2 gap-3">
-          <Btn color="bg-green-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'atk_shot_range', pid, tid })} />
+          <Btn color="bg-green-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'atk_shot_origin', pid, tid })} />
           <Btn color="bg-green-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'atk_other', pid, tid })} />
         </div>
       </div>
     )
   }
 
-  if (flow.s === 'atk_shot_range') {
+  if (flow.s === 'atk_shot_origin') {
     const { pid, tid } = flow
     return (
       <div className="p-4">
+        <StepTitle>Hvaðan kom árásin?</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {ORIGINS.map(({ v, label }) => (
+            <Btn key={v} color="bg-green-600" label={label} size="lg"
+              onTap={() => setFlow({ s: 'atk_shot_range', pid, tid, origin: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'atk_shot_range') {
+    const { pid, tid, origin } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Hvaðan kom skotið?</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label} size="lg"
-              onTap={() => setFlow({ s: 'atk_shot_phase', pid, tid, range: v })} />
+              onTap={() => setFlow({ s: 'atk_shot_phase', pid, tid, origin, range: v })} />
           ))}
         </div>
       </div>
@@ -454,15 +489,15 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'atk_shot_phase') {
-    const { pid, tid, range } = flow
+    const { pid, tid, origin, range } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range]]} />
         <StepTitle>Tegund sóknar</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {PHASES.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label}
-              onTap={() => setFlow({ s: 'atk_shot_numerical', pid, tid, range, phase: v })} />
+              onTap={() => setFlow({ s: 'atk_shot_numerical', pid, tid, origin, range, phase: v })} />
           ))}
         </div>
       </div>
@@ -470,15 +505,15 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'atk_shot_numerical') {
-    const { pid, tid, range, phase } = flow
+    const { pid, tid, origin, range, phase } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase]]} />
         <StepTitle>Leiktala</StepTitle>
         <div className="grid grid-cols-2 gap-3">
           {ATK_NUMERICALS.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label}
-              onTap={() => setFlow({ s: 'atk_shot_assist', pid, tid, range, phase, numerical: v })} />
+              onTap={() => setFlow({ s: 'atk_shot_assist', pid, tid, origin, range, phase, numerical: v })} />
           ))}
         </div>
       </div>
@@ -486,20 +521,20 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'atk_shot_assist') {
-    const { pid, tid, range, phase, numerical } = flow
+    const { pid, tid, origin, range, phase, numerical } = flow
     const isPenalty = range === 'penalty'
     const others = trackedPlayers.filter(p => p.id !== pid)
 
     if (isPenalty) {
       return (
         <div className="p-4">
-          <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+          <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
           <StepTitle>Vítasending — hverjir sendi?</StepTitle>
           <PlayerPickerGrid
             players={others}
             noneLabel="Enginn"
-            onPick={(id) => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, phase, numerical, vitasendingId: id })}
-            onNone={() => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, phase, numerical, vitasendingId: null })}
+            onPick={(id) => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, origin, phase, numerical, vitasendingId: id })}
+            onNone={() => setFlow({ s: 'atk_shot_fiskad_viti', pid, tid, origin, phase, numerical, vitasendingId: null })}
           />
         </div>
       )
@@ -507,39 +542,39 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
 
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hver átti stoðsendinguna?</StepTitle>
         <PlayerPickerGrid
           players={others}
           noneLabel="Enginn"
-          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, range, phase, numerical, assistId: id, vitasendingId: null, fiskadVitiId: null })}
-          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, range, phase, numerical, assistId: null, vitasendingId: null, fiskadVitiId: null })}
+          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, origin, range, phase, numerical, assistId: id, vitasendingId: null, fiskadVitiId: null })}
+          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, origin, range, phase, numerical, assistId: null, vitasendingId: null, fiskadVitiId: null })}
         />
       </div>
     )
   }
 
   if (flow.s === 'atk_shot_fiskad_viti') {
-    const { pid, tid, phase, numerical, vitasendingId } = flow
+    const { pid, tid, origin, phase, numerical, vitasendingId } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={['Víti', PHASE_LABEL[phase], NUMERICAL_LABEL[numerical], vitasendingId ? `Vítasending: ${playerLabel(vitasendingId)}` : undefined]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], 'Víti', PHASE_LABEL[phase], NUMERICAL_LABEL[numerical], vitasendingId ? `Vítasending: ${playerLabel(vitasendingId)}` : undefined]} />
         <StepTitle>Fiskað víti — hverjum var gert víti á?</StepTitle>
         <PlayerPickerGrid
           players={trackedPlayers}
           noneLabel="Enginn"
-          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: id })}
-          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: null })}
+          onPick={(id) => setFlow({ s: 'atk_shot_zone', pid, tid, origin, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: id })}
+          onNone={() => setFlow({ s: 'atk_shot_zone', pid, tid, origin, range: 'penalty', phase, numerical, assistId: null, vitasendingId, fiskadVitiId: null })}
         />
       </div>
     )
   }
 
   if (flow.s === 'atk_shot_zone') {
-    const { pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId } = flow
+    const { pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId } = flow
 
     function commitOffTarget(subType: 'blocked' | 'wide' | 'post') {
-      const ctx: Record<string, unknown> = {}
+      const ctx: Record<string, unknown> = { attack_origin: origin }
       if (assistId) ctx.assist_player_id = assistId
       else if (vitasendingId) ctx.assist_player_id = vitasendingId
       done({
@@ -557,10 +592,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
 
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
-          onZone={(z) => setFlow({ s: 'atk_shot_outcome', pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone: z })}
+          onZone={(z) => setFlow({ s: 'atk_shot_outcome', pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone: z })}
           onBlocked={() => commitOffTarget('blocked')}
           onWide={() => commitOffTarget('wide')}
           onPost={() => commitOffTarget('post')}
@@ -570,10 +605,26 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'atk_shot_outcome') {
-    const { pid, tid, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone } = flow
+    const { pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <StepTitle>Niðurstaða</StepTitle>
+        <div className="grid grid-cols-2 gap-4">
+          <Btn color="bg-green-600" label="Mark"  size="lg"
+            onTap={() => setFlow({ s: 'atk_shot_hand_up', pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone, subType: 'goal' })} />
+          <Btn color="bg-slate-600" label="Varið" size="lg"
+            onTap={() => setFlow({ s: 'atk_shot_hand_up', pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone, subType: 'saved' })} />
+        </div>
+      </div>
+    )
+  }
 
-    function commitShot(subType: 'goal' | 'saved') {
-      const ctx: Record<string, unknown> = {}
+  if (flow.s === 'atk_shot_hand_up') {
+    const { pid, tid, origin, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone, subType } = flow
+
+    function commitShot(handUp: boolean) {
+      const ctx: Record<string, unknown> = { attack_origin: origin, hand_up: handUp }
       if (assistId) ctx.assist_player_id = assistId
       else if (vitasendingId) ctx.assist_player_id = vitasendingId
       commitEvent({
@@ -587,7 +638,6 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
         zone,
         context: ctx,
       })
-      // Penalty: also log the foul so fiskað víti is captured
       if (range === 'penalty' && fiskadVitiId) {
         commitEvent({
           event_type: 'FOUL',
@@ -602,11 +652,11 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
 
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
-        <StepTitle>Niðurstaða</StepTitle>
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], subType === 'goal' ? 'Mark' : 'Varið']} />
+        <StepTitle>Höndin uppi?</StepTitle>
         <div className="grid grid-cols-2 gap-4">
-          <Btn color="bg-green-600" label="Mark"   size="lg" onTap={() => commitShot('goal')} />
-          <Btn color="bg-slate-600" label="Varið"  size="lg" onTap={() => commitShot('saved')} />
+          <Btn color="bg-green-600" label="Já"  size="lg" onTap={() => commitShot(true)} />
+          <Btn color="bg-slate-600" label="Nei" size="lg" onTap={() => commitShot(false)} />
         </div>
       </div>
     )
@@ -655,22 +705,38 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
       <div className="p-4">
         <StepTitle>Markmaður → veldu aðgerð</StepTitle>
         <div className="grid grid-cols-2 gap-3">
-          <Btn color="bg-purple-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'gk_shot_range', pid, tid })} />
+          <Btn color="bg-purple-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'gk_shot_origin', pid, tid })} />
           <Btn color="bg-purple-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'gk_other', pid, tid })} />
         </div>
       </div>
     )
   }
 
-  if (flow.s === 'gk_shot_range') {
+  if (flow.s === 'gk_shot_origin') {
     const { pid, tid } = flow
     return (
       <div className="p-4">
+        <StepTitle>Hvaðan kom árásin?</StepTitle>
+        <div className="grid grid-cols-3 gap-3">
+          {ORIGINS.map(({ v, label }) => (
+            <Btn key={v} color="bg-purple-600" label={label} size="lg"
+              onTap={() => setFlow({ s: 'gk_shot_range', pid, tid, origin: v })} />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_range') {
+    const { pid, tid, origin } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Hvaðan kom skotið frá?</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label} size="lg"
-              onTap={() => setFlow({ s: 'gk_shot_phase', pid, tid, range: v })} />
+              onTap={() => setFlow({ s: 'gk_shot_phase', pid, tid, origin, range: v })} />
           ))}
         </div>
       </div>
@@ -678,15 +744,15 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'gk_shot_phase') {
-    const { pid, tid, range } = flow
+    const { pid, tid, origin, range } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range]]} />
         <StepTitle>Tegund sóknar</StepTitle>
         <div className="grid grid-cols-3 gap-3">
           {PHASES.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label}
-              onTap={() => setFlow({ s: 'gk_shot_numerical', pid, tid, range, phase: v })} />
+              onTap={() => setFlow({ s: 'gk_shot_numerical', pid, tid, origin, range, phase: v })} />
           ))}
         </div>
       </div>
@@ -694,15 +760,15 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'gk_shot_numerical') {
-    const { pid, tid, range, phase } = flow
+    const { pid, tid, origin, range, phase } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase]]} />
         <StepTitle>Leiktala</StepTitle>
         <div className="grid grid-cols-2 gap-3">
           {GK_NUMERICALS.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label}
-              onTap={() => setFlow({ s: 'gk_shot_zone', pid, tid, range, phase, numerical: v })} />
+              onTap={() => setFlow({ s: 'gk_shot_zone', pid, tid, origin, range, phase, numerical: v })} />
           ))}
         </div>
       </div>
@@ -710,31 +776,47 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   }
 
   if (flow.s === 'gk_shot_zone') {
-    const { pid, tid, range, phase, numerical } = flow
+    const { pid, tid, origin, range, phase, numerical } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
-          onZone={(z) => setFlow({ s: 'gk_shot_outcome', pid, tid, range, phase, numerical, zone: z })}
-          onWide={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical })}
-          onPost={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical })}
+          onZone={(z) => setFlow({ s: 'gk_shot_outcome', pid, tid, origin, range, phase, numerical, zone: z })}
+          onWide={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical, context: { attack_origin: origin } })}
+          onPost={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'missed', shot_range: range, phase_type: phase, numerical_state: numerical, context: { attack_origin: origin } })}
         />
       </div>
     )
   }
 
   if (flow.s === 'gk_shot_outcome') {
-    const { pid, tid, range, phase, numerical, zone } = flow
+    const { pid, tid, origin, range, phase, numerical, zone } = flow
     return (
       <div className="p-4">
-        <Breadcrumb items={[RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Niðurstaða</StepTitle>
         <div className="grid grid-cols-2 gap-4">
-          <Btn color="bg-purple-600" label="Varin"        size="lg"
-            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'save', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
-          <Btn color="bg-red-600"    label="Mark" size="lg"
-            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'goal_conceded', shot_range: range, phase_type: phase, numerical_state: numerical, zone })} />
+          <Btn color="bg-purple-600" label="Varin" size="lg"
+            onTap={() => setFlow({ s: 'gk_shot_hand_up', pid, tid, origin, range, phase, numerical, zone, subType: 'save' })} />
+          <Btn color="bg-red-600"    label="Mark"  size="lg"
+            onTap={() => setFlow({ s: 'gk_shot_hand_up', pid, tid, origin, range, phase, numerical, zone, subType: 'goal_conceded' })} />
+        </div>
+      </div>
+    )
+  }
+
+  if (flow.s === 'gk_shot_hand_up') {
+    const { pid, tid, origin, range, phase, numerical, zone, subType } = flow
+    return (
+      <div className="p-4">
+        <Breadcrumb items={[ORIGIN_LABEL[origin], RANGE_LABEL[range], subType === 'save' ? 'Varin' : 'Mark']} />
+        <StepTitle>Höndin uppi?</StepTitle>
+        <div className="grid grid-cols-2 gap-4">
+          <Btn color="bg-green-600" label="Já"  size="lg"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: subType, shot_range: range, phase_type: phase, numerical_state: numerical, zone, context: { attack_origin: origin, hand_up: true } })} />
+          <Btn color="bg-slate-600" label="Nei" size="lg"
+            onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: subType, shot_range: range, phase_type: phase, numerical_state: numerical, zone, context: { attack_origin: origin, hand_up: false } })} />
         </div>
       </div>
     )
