@@ -81,17 +81,17 @@ const GK_NUMERICALS: { v: NumericalState; label: string }[] = [
 
 const ORIGINS: { v: string; label: string }[] = [
   { v: 'left_wing',    label: 'Vinstra Horn' },
-  { v: 'left_center',  label: 'Vinstri miðja' },
-  { v: 'center',       label: 'Miðja' },
-  { v: 'right_center', label: 'Hægri miðja' },
-  { v: 'right_wing',   label: 'Hægra Horn' },
-  { v: 'line',         label: 'Lína' },
-  { v: 'other',        label: 'Annað' },
+  { v: 'left_center',  label: 'Vinstri Skytta' },
+  { v: 'center',       label: 'Vinstri Miðja' },
+  { v: 'right_center', label: 'Hægri Miðja' },
+  { v: 'right_wing',   label: 'Hægri Skytta' },
+  { v: 'line',         label: 'Hægra Horn' },
+  { v: 'other',        label: 'Annað (Árás)' },
 ]
 
 const ORIGIN_LABEL: Record<string, string> = {
-  left_wing: 'Vinstra Horn', left_center: 'Vinstri miðja', center: 'Miðja',
-  right_center: 'Hægri miðja', right_wing: 'Hægra Horn', line: 'Lína', other: 'Annað',
+  left_wing: 'Vinstra Horn', left_center: 'Vinstri Skytta', center: 'Vinstri Miðja',
+  right_center: 'Hægri Miðja', right_wing: 'Hægri Skytta', line: 'Hægra Horn', other: 'Annað (Árás)',
 }
 
 const RANGE_LABEL: Record<ShotRange, string> = {

@@ -207,12 +207,12 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="6á6" colSpan={3} />
             <ThGroup label="Annað" colSpan={7} />
             <ThGroup label="Vinstra Horn" colSpan={3} />
-            <ThGroup label="Vinstri miðja" colSpan={3} />
-            <ThGroup label="Miðja" colSpan={3} />
-            <ThGroup label="Hægri miðja" colSpan={3} />
+            <ThGroup label="Vinstri Skytta" colSpan={3} />
+            <ThGroup label="Vinstri Miðja" colSpan={3} />
+            <ThGroup label="Hægri Miðja" colSpan={3} />
+            <ThGroup label="Hægri Skytta" colSpan={3} />
             <ThGroup label="Hægra Horn" colSpan={3} />
-            <ThGroup label="Lína (uppruni)" colSpan={3} />
-            <ThGroup label="Annað (uppruni)" colSpan={3} />
+            <ThGroup label="Annað (Árás)" colSpan={3} />
             <ThGroup label="Höndin uppi" colSpan={3} />
             <ThGroup label="Höndin niðri" colSpan={3} />
           </tr>
@@ -399,12 +399,12 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="6á7" colSpan={3} />
             <ThGroup label="Annað" colSpan={2} />
             <ThGroup label="Vinstra Horn" colSpan={3} />
-            <ThGroup label="Vinstri miðja" colSpan={3} />
-            <ThGroup label="Miðja" colSpan={3} />
-            <ThGroup label="Hægri miðja" colSpan={3} />
+            <ThGroup label="Vinstri Skytta" colSpan={3} />
+            <ThGroup label="Vinstri Miðja" colSpan={3} />
+            <ThGroup label="Hægri Miðja" colSpan={3} />
+            <ThGroup label="Hægri Skytta" colSpan={3} />
             <ThGroup label="Hægra Horn" colSpan={3} />
-            <ThGroup label="Lína (uppruni)" colSpan={3} />
-            <ThGroup label="Annað (uppruni)" colSpan={3} />
+            <ThGroup label="Annað (Árás)" colSpan={3} />
             <ThGroup label="Höndin uppi" colSpan={3} />
             <ThGroup label="Höndin niðri" colSpan={3} />
           </tr>

@@ -267,7 +267,7 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
   return goalkeepers.map(player => {
     const pid = player.id
     const pe = gkEvents.filter(e => e.player_id === pid)
-    const shotEv = pe.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry' || e.sub_type === 'missed')
+    const shotEv = pe.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry')
 
     function rng(range: string): [number, number] {
       const rs = shotEv.filter(e => e.shot_range === range)
