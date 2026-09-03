@@ -1,4 +1,5 @@
 import type { Event, Player } from '@/lib/db/schema'
+import { ORIGINS, DIRECTIONS, type AttackDirection } from '@/lib/attackContext'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -391,4 +392,45 @@ export function computeTeamStats(events: Event[], trackedTeamId: string): TeamSt
     opponentShots: gkEvents.length,
     opponentAttacks: events.filter(e => e.event_type === 'ATTACK' && e.team_id !== trackedTeamId).length,
   }
+}
+
+// ─── Origin × direction breakdown ──────────────────────────────────────────────
+// Cross-tabs "where did this happen" (attack_origin, 7 zones) against
+// "which way did it go" (attack_direction: right/left/neither) for any subset
+// of events — used to spot patterns like "we attack from the left wing and
+// always go right, and it isn't working."
+
+export interface OriginDirectionCell {
+  total: number
+  success: number
+}
+
+export interface OriginDirectionRow {
+  zone: string
+  label: string
+  cells: Record<AttackDirection, OriginDirectionCell>
+}
+
+export function computeOriginDirectionBreakdown(
+  events: Event[],
+  matches: (e: Event) => boolean,
+  isSuccess?: (e: Event) => boolean,
+): OriginDirectionRow[] {
+  return ORIGINS.map(({ v: zone, label }) => {
+    const cells = Object.fromEntries(
+      DIRECTIONS.map(d => [d.v, { total: 0, success: 0 }]),
+    ) as Record<AttackDirection, OriginDirectionCell>
+
+    for (const e of events) {
+      if (!matches(e)) continue
+      const ctx = getCtx(e)
+      if (ctx.attack_origin !== zone) continue
+      const dir = ctx.attack_direction as AttackDirection | undefined
+      if (!dir || !cells[dir]) continue
+      cells[dir].total++
+      if (isSuccess?.(e)) cells[dir].success++
+    }
+
+    return { zone, label, cells }
+  })
 }

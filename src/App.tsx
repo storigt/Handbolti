@@ -151,24 +151,31 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
   const [view, setView] = useState<AppView>('home')
   const [hasSavedMatch, setHasSavedMatch] = useState(() => !!getSavedSession())
 
-  // Source of truth: profile (cross-device) with localStorage as fast cache.
-  const [savedTeamId] = useState<string | null>(() => {
+  // Source of truth: profile (cross-device). localStorage is just a fast cache —
+  // when both are present and differ (e.g. main team switched on another device),
+  // the profile always wins and the stale local cache is overwritten.
+  const [savedTeamId, setSavedTeamId] = useState<string | null>(() => {
     const local = getTrackedTeamId()
-    // Sync profile team ID into localStorage if localStorage is empty
-    if (!local && profileTeamId) {
+    if (profileTeamId && local !== profileTeamId) {
       setTrackedTeamId(profileTeamId)
-      return profileTeamId
     }
-    return local
+    return profileTeamId ?? local
   })
 
-  // If localStorage has a team but the profile doesn't, push it to the profile
+  // Bootstrap: if this device has a team cached but the profile doesn't have one yet
+  // (e.g. a pre-migration user), push it up to the profile.
   useEffect(() => {
     if (savedTeamId && !profileTeamId) {
       void updateProfileTeam(savedTeamId)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  function handleMainTeamChanged(teamId: string) {
+    setTrackedTeamId(teamId)
+    void updateProfileTeam(teamId)
+    setSavedTeamId(teamId)
+  }
 
   const { data: allTeams = [] } = useQuery({
     queryKey: ['teams'],
@@ -319,6 +326,7 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
         trackedTeam={trackedTeam}
         onNewMatch={() => setView('home')}
         onEditMatch={handleEditMatch}
+        onMainTeamChanged={handleMainTeamChanged}
       />
     )
   }

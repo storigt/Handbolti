@@ -112,6 +112,7 @@ export interface Team {
   short_name: string | null
   home_venue: string | null
   owner_user_id: string | null
+  is_archived: boolean
   created_at: string
 }
 

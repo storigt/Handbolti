@@ -1,8 +1,9 @@
-// Step 1 (first time only): create the tracked team + add initial players
-import { useState } from 'react'
-import { useMutation } from '@tanstack/react-query'
-import { Button, Card, Field, Input, Label } from '@/components/ui'
-import { createTeam, createPlayer, setTrackedTeamId, updateProfileTeam } from '@/lib/supabase/queries'
+// Step 1: pick which of the coach's teams this match is for, manage teams, or create a new one
+import { useEffect, useState } from 'react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { Button, Card, Field, Input, Label, Spinner } from '@/components/ui'
+import { ManageTeamsList } from '@/components/team/ManageTeamsList'
+import { createTeam, createPlayer, getMyTeams, setTrackedTeamId, updateProfileTeam } from '@/lib/supabase/queries'
 import type { Player } from '@/lib/db/schema'
 
 interface DraftPlayer {
@@ -20,15 +21,34 @@ const emptyPlayer = (): DraftPlayer => ({
 })
 
 interface Props {
+  mainTeamId: string | null
   onDone: (teamId: string) => void
 }
 
-export function TeamSetupStep({ onDone }: Props) {
+type Mode = 'pick' | 'manage' | 'new'
+
+export function TeamSetupStep({ mainTeamId, onDone }: Props) {
+  const queryClient = useQueryClient()
+  const [mode, setMode] = useState<Mode>(mainTeamId ? 'pick' : 'new')
+  const [selectedTeamId, setSelectedTeamId] = useState<string>(mainTeamId ?? '')
+
+  const { data: myTeams = [], isLoading: loadingTeams } = useQuery({
+    queryKey: ['my-teams'],
+    queryFn: getMyTeams,
+  })
+
+  // If the selected team got renamed/deleted from the Manage tab, fall back to main.
+  useEffect(() => {
+    if (selectedTeamId && myTeams.length > 0 && !myTeams.some(t => t.id === selectedTeamId)) {
+      setSelectedTeamId(mainTeamId ?? '')
+    }
+  }, [myTeams, selectedTeamId, mainTeamId])
+
   const [teamName, setTeamName] = useState('')
   const [shortName, setShortName] = useState('')
   const [players, setPlayers] = useState<DraftPlayer[]>([emptyPlayer()])
 
-  const mutation = useMutation({
+  const createMutation = useMutation({
     mutationFn: async () => {
       if (!teamName.trim()) throw new Error('Team name is required')
       const team = await createTeam({
@@ -36,8 +56,14 @@ export function TeamSetupStep({ onDone }: Props) {
         short_name: shortName.trim() || null,
         home_venue: null,
       })
-      setTrackedTeamId(team.id)
-      void updateProfileTeam(team.id)
+
+      // The very first team a coach ever creates becomes their main/default team.
+      // Later teams don't touch the main-team pointer — that's an explicit choice
+      // made from the Season Dashboard or the Manage teams tab.
+      if (myTeams.length === 0) {
+        setTrackedTeamId(team.id)
+        void updateProfileTeam(team.id)
+      }
 
       const validPlayers = players.filter(p => p.first_name.trim() || p.last_name.trim())
       for (const p of validPlayers) {
@@ -52,7 +78,10 @@ export function TeamSetupStep({ onDone }: Props) {
       }
       return team
     },
-    onSuccess: (team) => onDone(team.id),
+    onSuccess: (team) => {
+      void queryClient.invalidateQueries({ queryKey: ['my-teams'] })
+      onDone(team.id)
+    },
   })
 
   function updatePlayer(i: number, field: keyof DraftPlayer, value: string) {
@@ -67,11 +96,118 @@ export function TeamSetupStep({ onDone }: Props) {
     setPlayers(prev => prev.filter((_, idx) => idx !== i))
   }
 
+  const tabs = mode !== 'new' && myTeams.length > 0 && (
+    <div className="flex gap-1 border-b border-gray-200">
+      <button
+        onClick={() => setMode('pick')}
+        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          mode === 'pick' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        Velja lið
+      </button>
+      <button
+        onClick={() => setMode('manage')}
+        className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+          mode === 'manage' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
+        }`}
+      >
+        Stjórna liðum
+      </button>
+    </div>
+  )
+
+  if (mode === 'pick') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Which team is this match for?</h2>
+          <p className="text-sm text-gray-500 mt-1">Pick one of your teams.</p>
+        </div>
+
+        {tabs}
+
+        <Card className="p-4 space-y-2">
+          {loadingTeams ? (
+            <div className="flex justify-center py-6"><Spinner /></div>
+          ) : myTeams.length === 0 ? (
+            <p className="text-sm text-gray-500 py-2">You don't have any teams yet — create one below.</p>
+          ) : (
+            <div className="space-y-2">
+              {myTeams.map(team => (
+                <label
+                  key={team.id}
+                  className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border cursor-pointer transition-colors ${
+                    selectedTeamId === team.id ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:bg-gray-50'
+                  }`}
+                >
+                  <input
+                    type="radio"
+                    name="existing-team"
+                    checked={selectedTeamId === team.id}
+                    onChange={() => setSelectedTeamId(team.id)}
+                  />
+                  <span className="font-medium text-gray-800">{team.name}</span>
+                  {team.id === mainTeamId && (
+                    <span className="ml-auto text-xs text-blue-600 font-medium">Main team</span>
+                  )}
+                </label>
+              ))}
+            </div>
+          )}
+        </Card>
+
+        <div className="flex items-center justify-between">
+          <button
+            onClick={() => setMode('manage')}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium"
+          >
+            + Add a new team
+          </button>
+          <Button
+            onClick={() => selectedTeamId && onDone(selectedTeamId)}
+            disabled={!selectedTeamId}
+            size="lg"
+          >
+            Continue →
+          </Button>
+        </div>
+      </div>
+    )
+  }
+
+  if (mode === 'manage') {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Manage your teams</h2>
+          <p className="text-sm text-gray-500 mt-1">
+            Rename, hide, or add a team. A team with match history is hidden rather than deleted — its data is kept and you can bring it back later. Your current main team can't be hidden.
+          </p>
+        </div>
+
+        {tabs}
+
+        <ManageTeamsList mainTeamId={mainTeamId} onAddTeam={() => setMode('new')} />
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h2 className="text-xl font-semibold text-gray-900">Set up your team</h2>
-        <p className="text-sm text-gray-500 mt-1">This is a one-time setup. You can edit everything later.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Set up a new team</h2>
+          <p className="text-sm text-gray-500 mt-1">You can edit everything later.</p>
+        </div>
+        {myTeams.length > 0 && (
+          <button
+            onClick={() => setMode('manage')}
+            className="text-sm text-blue-600 hover:text-blue-700 font-medium shrink-0"
+          >
+            ← Back to your teams
+          </button>
+        )}
       </div>
 
       <Card className="p-4 space-y-4">
@@ -154,17 +290,17 @@ export function TeamSetupStep({ onDone }: Props) {
         <p className="text-xs text-gray-400">You can add more players later from the team settings.</p>
       </Card>
 
-      {mutation.error && (
-        <p className="text-sm text-red-600">{(mutation.error as Error).message}</p>
+      {createMutation.error && (
+        <p className="text-sm text-red-600">{(createMutation.error as Error).message}</p>
       )}
 
       <div className="flex justify-end">
         <Button
-          onClick={() => mutation.mutate()}
-          disabled={!teamName.trim() || mutation.isPending}
+          onClick={() => createMutation.mutate()}
+          disabled={!teamName.trim() || createMutation.isPending}
           size="lg"
         >
-          {mutation.isPending ? 'Saving…' : 'Save team & continue →'}
+          {createMutation.isPending ? 'Saving…' : 'Save team & continue →'}
         </Button>
       </div>
     </div>

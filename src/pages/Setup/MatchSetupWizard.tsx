@@ -4,7 +4,7 @@ import { TeamSetupStep } from './steps/TeamSetupStep'
 import { MatchDetailsStep } from './steps/MatchDetailsStep'
 import { RosterStep } from './steps/RosterStep'
 import { ConfirmStep } from './steps/ConfirmStep'
-import { getTrackedTeamId, setTrackedTeamId } from '@/lib/supabase/queries'
+import { getTrackedTeamId } from '@/lib/supabase/queries'
 import { supabase } from '@/lib/supabase/client'
 import type { Match, Team } from '@/lib/db/schema'
 import { Spinner } from '@/components/ui'
@@ -18,9 +18,9 @@ interface Props {
 }
 
 export function MatchSetupWizard({ initialTeamId, onMatchStarted, onCancel }: Props) {
-  const storedTeamId = initialTeamId ?? getTrackedTeamId()
-  const [step, setStep] = useState<Step>(storedTeamId ? 'match-details' : 'team-setup')
-  const [trackedTeamId, setTrackedTeamIdState] = useState<string>(storedTeamId ?? '')
+  const mainTeamId = initialTeamId ?? getTrackedTeamId()
+  const [step, setStep] = useState<Step>('team-setup')
+  const [trackedTeamId, setTrackedTeamIdState] = useState<string>('')
   const [matchId, setMatchId] = useState<string>('')
   const [opponentTeamId, setOpponentTeamId] = useState<string>('')
 
@@ -55,8 +55,7 @@ export function MatchSetupWizard({ initialTeamId, onMatchStarted, onCancel }: Pr
     enabled: !!matchId,
   })
 
-  const STEPS: Step[] = ['team-setup', 'match-details', 'roster', 'confirm']
-  const visibleSteps = storedTeamId ? STEPS.slice(1) : STEPS
+  const visibleSteps: Step[] = ['team-setup', 'match-details', 'roster', 'confirm']
   const currentIndex = visibleSteps.indexOf(step)
 
   return (
@@ -97,8 +96,8 @@ export function MatchSetupWizard({ initialTeamId, onMatchStarted, onCancel }: Pr
         <div className="w-full max-w-2xl">
           {step === 'team-setup' && (
             <TeamSetupStep
+              mainTeamId={mainTeamId}
               onDone={(id) => {
-                setTrackedTeamId(id)
                 setTrackedTeamIdState(id)
                 setStep('match-details')
               }}

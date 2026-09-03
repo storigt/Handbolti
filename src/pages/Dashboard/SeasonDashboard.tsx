@@ -12,15 +12,17 @@ import {
   getLineupsForMatches,
   type MatchWithTeams,
 } from '@/lib/supabase/dashboardQueries'
-import { getPlayersByTeam, updateTeam, updatePlayer, createPlayer, deleteMatch } from '@/lib/supabase/queries'
-import { computeAttack, computeDefense, computeGK } from '@/lib/stats/matchStats'
+import { getPlayersByTeam, getMyTeams, updateTeam, updatePlayer, createPlayer, deleteMatch, setTrackedTeamId, updateProfileTeam } from '@/lib/supabase/queries'
+import { computeAttack, computeDefense, computeGK, computeOriginDirectionBreakdown } from '@/lib/stats/matchStats'
 import { AttackTable, DefenseTable, GKTable, TeamStatsTable, ViewModeToggle } from '@/components/stats/StatTables'
+import { OriginDirectionTable } from '@/components/stats/OriginDirectionTable'
 import { useMinuteFilter, MinuteFilterBar } from '@/components/stats/MinuteFilter'
 import { ShotMap } from '@/components/stats/ShotMap'
 import { ExportModal } from '@/components/stats/ExportModal'
 import { computeIndices } from '@/lib/stats/indices'
 import { IndexPanel } from '@/components/stats/IndexPanel'
 import { Card, Spinner } from '@/components/ui'
+import { ManageTeamsList } from '@/components/team/ManageTeamsList'
 import type { Team, Player, CourtLineup } from '@/lib/db/schema'
 import { GrofTab } from './GrofTab'
 
@@ -32,10 +34,19 @@ interface Props {
   trackedTeam: Team
   onNewMatch: () => void
   onEditMatch: (matchId: string) => void
+  onMainTeamChanged: (teamId: string) => void
 }
 
-export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props) {
+export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch, onMainTeamChanged }: Props) {
   const queryClient = useQueryClient()
+
+  const { data: myTeams = [] } = useQuery({
+    queryKey: ['my-teams'],
+    queryFn: getMyTeams,
+  })
+  const [focusTeamId, setFocusTeamId] = useState(mainTeam.id)
+  const trackedTeam = myTeams.find(t => t.id === focusTeamId) ?? mainTeam
+
   const [tab, setTab] = useState<Tab>('overview')
   const [seasonId, setSeasonId] = useState<string>('')
   const [competitionId, setCompetitionId] = useState<string>('')
@@ -43,9 +54,24 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
   const [selectedMatchIds, setSelectedMatchIds] = useState<Set<string>>(new Set())
   const [showExport, setShowExport] = useState(false)
   const [showEditTeam, setShowEditTeam] = useState(false)
+  const [showManageTeams, setShowManageTeams] = useState(false)
   // drill-down into a single match from Leikir tab
   const [drillMatchId, setDrillMatchId] = useState<string | null>(null)
   const [drillSubTab, setDrillSubTab] = useState<DrillSubTab>('attack')
+
+  function handleFocusTeamChange(teamId: string) {
+    setFocusTeamId(teamId)
+    setSeasonId('')
+    setCompetitionId('')
+    setSelectedMatchIds(new Set())
+    setDrillMatchId(null)
+  }
+
+  function handleSetAsMainTeam() {
+    setTrackedTeamId(trackedTeam.id)
+    void updateProfileTeam(trackedTeam.id)
+    onMainTeamChanged(trackedTeam.id)
+  }
 
   const editTeamMutation = useMutation({
     mutationFn: (updates: { name: string; short_name: string; home_venue: string }) =>
@@ -56,6 +82,7 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['teams'] })
+      void queryClient.invalidateQueries({ queryKey: ['my-teams'] })
       setShowEditTeam(false)
     },
   })
@@ -229,7 +256,21 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
       <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
         <div className="flex items-center gap-2 min-w-0">
           <div className="min-w-0">
-            <h1 className="text-lg font-bold truncate">{trackedTeam.name}</h1>
+            {myTeams.length > 1 ? (
+              <select
+                value={focusTeamId}
+                onChange={e => handleFocusTeamChange(e.target.value)}
+                className="text-lg font-bold bg-slate-900 text-white border border-slate-700 rounded px-1 py-0.5 max-w-full truncate focus:outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                {myTeams.map(team => (
+                  <option key={team.id} value={team.id}>
+                    {team.name}{team.id === mainTeam.id ? ' (aðallið)' : ''}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <h1 className="text-lg font-bold truncate">{trackedTeam.name}</h1>
+            )}
             <p className="text-slate-400 text-sm">Tímabilsyfirlit</p>
           </div>
           <button
@@ -238,6 +279,20 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
           >
             Breyta lið
           </button>
+          <button
+            onClick={() => setShowManageTeams(true)}
+            className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
+          >
+            Stjórna liðum
+          </button>
+          {trackedTeam.id !== mainTeam.id && (
+            <button
+              onClick={handleSetAsMainTeam}
+              className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
+            >
+              Gera að aðallið
+            </button>
+          )}
         </div>
         <div className="flex gap-2 shrink-0">
           <button
@@ -263,6 +318,30 @@ export function SeasonDashboard({ trackedTeam, onNewMatch, onEditMatch }: Props)
           saving={editTeamMutation.isPending}
           error={editTeamMutation.error instanceof Error ? editTeamMutation.error.message : null}
         />
+      )}
+
+      {showManageTeams && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-semibold text-gray-900">Stjórna liðum</h2>
+                <p className="text-sm text-gray-500 mt-0.5">
+                  Rename, hide, or add a team. A team with match history is hidden rather than deleted — its data is kept and you can bring it back later. Your current main team can't be hidden.
+                </p>
+              </div>
+              <button
+                onClick={() => setShowManageTeams(false)}
+                className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0 ml-3"
+              >
+                ×
+              </button>
+            </div>
+            <div className="overflow-y-auto flex-1 px-6 py-4">
+              <ManageTeamsList mainTeamId={mainTeam.id} />
+            </div>
+          </div>
+        </div>
       )}
 
       {showExport && (
@@ -644,6 +723,31 @@ function StatsTab({
   const defenseRows = useMemo(() => computeDefense(filtered, allPlayers, trackedTeamId), [filtered, allPlayers, trackedTeamId])
   const gkRows = useMemo(() => computeGK(filtered, goalkeepers, trackedTeamId), [filtered, goalkeepers, trackedTeamId])
 
+  const shotOriginRows = useMemo(() => computeOriginDirectionBreakdown(
+    filtered,
+    e => e.event_type === 'SHOT' && e.team_id === trackedTeamId,
+    e => e.sub_type === 'goal',
+  ), [filtered, trackedTeamId])
+  const turnoverOriginRows = useMemo(() => computeOriginDirectionBreakdown(
+    filtered,
+    e => e.event_type === 'TURNOVER' && e.team_id === trackedTeamId,
+  ), [filtered, trackedTeamId])
+  const foulOriginRows = useMemo(() => computeOriginDirectionBreakdown(
+    filtered,
+    e => e.event_type === 'FOUL' && e.team_id === trackedTeamId
+      && (e.sub_type === 'attacking_foul' || e.sub_type === '7m_awarded'),
+  ), [filtered, trackedTeamId])
+  const defActionOriginRows = useMemo(() => computeOriginDirectionBreakdown(
+    filtered,
+    e => e.event_type === 'DEFENSIVE_ACTION' && e.team_id === trackedTeamId,
+  ), [filtered, trackedTeamId])
+  const gkOriginRows = useMemo(() => computeOriginDirectionBreakdown(
+    filtered,
+    e => e.event_type === 'GOALKEEPER_ACTION' && e.team_id === trackedTeamId
+      && (e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'missed'),
+    e => e.sub_type === 'save',
+  ), [filtered, trackedTeamId])
+
   if (!hasMatches) {
     return (
       <div className="max-w-3xl mx-auto px-4">
@@ -665,6 +769,22 @@ function StatsTab({
         {tab === 'attack' && <AttackTable rows={attackRows} matchCount={matchCount} viewMode={viewMode} />}
         {tab === 'defense' && <DefenseTable rows={defenseRows} matchCount={matchCount} viewMode={viewMode} />}
         {tab === 'gk' && <GKTable rows={gkRows} matchCount={matchCount} viewMode={viewMode} />}
+
+        {tab === 'attack' && (
+          <>
+            <OriginDirectionTable title="Skot — uppruni & átt" rows={shotOriginRows} successLabel="Mörk" />
+            <OriginDirectionTable title="Tapaðir boltar — uppruni & átt" rows={turnoverOriginRows} />
+          </>
+        )}
+        {tab === 'defense' && (
+          <>
+            <OriginDirectionTable title="Brot — uppruni & átt" rows={foulOriginRows} />
+            <OriginDirectionTable title="Vörn — annað — uppruni & átt" rows={defActionOriginRows} />
+          </>
+        )}
+        {tab === 'gk' && (
+          <OriginDirectionTable title="Skot á markmann — uppruni & átt" rows={gkOriginRows} successLabel="Varið" />
+        )}
       </div>
     </div>
   )

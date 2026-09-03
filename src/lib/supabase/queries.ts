@@ -9,7 +9,7 @@ export async function getTeams(): Promise<Team[]> {
   return data
 }
 
-export async function createTeam(team: Omit<Team, 'id' | 'created_at' | 'owner_user_id'>): Promise<Team> {
+export async function createTeam(team: Omit<Team, 'id' | 'created_at' | 'owner_user_id' | 'is_archived'>): Promise<Team> {
   const { data: { user } } = await supabase.auth.getUser()
   const { data, error } = await supabase
     .from('teams')
@@ -18,6 +18,36 @@ export async function createTeam(team: Omit<Team, 'id' | 'created_at' | 'owner_u
     .single()
   if (error) throw error
   return data
+}
+
+// Counts matches each team is involved in (as tracked, home, or away) — used to
+// decide whether a team is safe to delete.
+export async function getTeamMatchCounts(teamIds: string[]): Promise<Record<string, number>> {
+  const counts: Record<string, number> = Object.fromEntries(teamIds.map(id => [id, 0]))
+  if (teamIds.length === 0) return counts
+
+  const filter = teamIds
+    .map(id => `home_team_id.eq.${id},away_team_id.eq.${id},tracked_team_id.eq.${id}`)
+    .join(',')
+  const { data, error } = await supabase
+    .from('matches')
+    .select('home_team_id, away_team_id, tracked_team_id')
+    .or(filter)
+  if (error) throw error
+
+  for (const m of data ?? []) {
+    for (const id of new Set([m.home_team_id, m.away_team_id, m.tracked_team_id])) {
+      if (id in counts) counts[id]++
+    }
+  }
+  return counts
+}
+
+export async function deleteTeam(teamId: string): Promise<void> {
+  // players cascade on team delete at the DB level, but delete explicitly to be safe.
+  await supabase.from('players').delete().eq('team_id', teamId)
+  const { error } = await supabase.from('teams').delete().eq('id', teamId)
+  if (error) throw error
 }
 
 export async function upsertTeamByName(name: string, shortName?: string): Promise<Team> {
@@ -186,15 +216,42 @@ export function setTrackedTeamId(id: string): void {
   localStorage.setItem(TRACKED_TEAM_KEY, id)
 }
 
-export async function getOwnedTeam(): Promise<Team | null> {
+export async function getMyTeams(): Promise<Team[]> {
   const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  const { data } = await supabase
+  if (!user) return []
+  const { data, error } = await supabase
     .from('teams')
     .select('*')
     .eq('owner_user_id', user.id)
-    .maybeSingle()
+    .eq('is_archived', false)
+    .order('name')
+  if (error) throw error
   return data
+}
+
+export async function getArchivedTeams(): Promise<Team[]> {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+  const { data, error } = await supabase
+    .from('teams')
+    .select('*')
+    .eq('owner_user_id', user.id)
+    .eq('is_archived', true)
+    .order('name')
+  if (error) throw error
+  return data
+}
+
+// Hides a team from all pickers/lists without touching its data — used for
+// teams that already have match history, where a hard delete isn't safe.
+export async function archiveTeam(teamId: string): Promise<void> {
+  const { error } = await supabase.from('teams').update({ is_archived: true }).eq('id', teamId)
+  if (error) throw error
+}
+
+export async function restoreTeam(teamId: string): Promise<void> {
+  const { error } = await supabase.from('teams').update({ is_archived: false }).eq('id', teamId)
+  if (error) throw error
 }
 
 export async function getMatchById(matchId: string): Promise<Match | null> {
@@ -241,17 +298,17 @@ export async function getAllProfiles(): Promise<ProfileWithTeam[]> {
   if (error) throw error
   if (!profiles) return []
 
-  const { data: teams } = await supabase
-    .from('teams')
-    .select('name, owner_user_id')
-    .not('owner_user_id', 'is', null)
+  const mainTeamIds = [...new Set(profiles.map(p => p.tracked_team_id).filter((id): id is string => !!id))]
+  const { data: teams } = mainTeamIds.length > 0
+    ? await supabase.from('teams').select('id, name').in('id', mainTeamIds)
+    : { data: [] }
 
-  const teamByUser: Record<string, string> = {}
+  const teamById: Record<string, string> = {}
   for (const t of teams ?? []) {
-    if (t.owner_user_id) teamByUser[t.owner_user_id] = t.name
+    teamById[t.id] = t.name
   }
 
-  return profiles.map(p => ({ ...p, teamName: teamByUser[p.id] ?? null }))
+  return profiles.map(p => ({ ...p, teamName: p.tracked_team_id ? teamById[p.tracked_team_id] ?? null : null }))
 }
 
 export async function setApproval(userId: string, approved: boolean): Promise<void> {
