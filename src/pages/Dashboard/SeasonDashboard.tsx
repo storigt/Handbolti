@@ -253,8 +253,8 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Header */}
-      <div className="bg-slate-900 text-white px-6 py-4 flex items-center justify-between">
-        <div className="flex items-center gap-2 min-w-0">
+      <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2 min-w-0">
           <div className="min-w-0">
             {myTeams.length > 1 ? (
               <select
