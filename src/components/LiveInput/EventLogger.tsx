@@ -106,11 +106,15 @@ const NUMERICAL_LABEL: Record<NumericalState, string> = {
 function Btn({ label, color = 'bg-slate-700', onTap, size = 'md', full = false }: {
   label: string; color?: string; onTap: () => void; size?: 'sm' | 'md' | 'lg'; full?: boolean
 }) {
-  const sz = size === 'lg' ? 'py-5 text-lg' : size === 'sm' ? 'py-2 text-sm' : 'py-4 text-base'
+  const sz = size === 'lg'
+    ? 'py-2.5 text-sm sm:py-4 sm:text-base md:py-5 md:text-lg'
+    : size === 'sm'
+    ? 'py-1.5 text-xs sm:py-2 sm:text-sm'
+    : 'py-2 text-sm sm:py-3 sm:text-base md:py-4'
   return (
     <button
       onPointerDown={onTap}
-      className={`${color} ${full ? 'w-full' : ''} text-white font-semibold rounded-xl ${sz} px-3
+      className={`${color} ${full ? 'w-full' : ''} text-white font-semibold rounded-xl ${sz} px-2 sm:px-3
         active:scale-95 transition-transform select-none`}
     >
       {label}
@@ -147,17 +151,17 @@ function PlayerPickerGrid({ players, onPick, onNone, noneLabel = 'Enginn' }: {
           <button
             key={p.id}
             onPointerDown={() => onPick(p.id)}
-            className="flex flex-col items-center py-2 px-1 rounded-xl border-2 border-gray-200 bg-white
+            className="flex flex-col items-center py-1.5 sm:py-2 px-1 rounded-xl border-2 border-gray-200 bg-white
               hover:border-blue-400 active:scale-95 transition-transform"
           >
-            <span className="text-lg font-bold leading-none">{p.jersey_number ?? '?'}</span>
-            <span className="text-xs text-gray-500 truncate w-full text-center mt-0.5">{p.last_name}</span>
+            <span className="text-base sm:text-lg font-bold leading-none">{p.jersey_number ?? '?'}</span>
+            <span className="text-[11px] sm:text-xs text-gray-500 truncate w-full text-center mt-0.5">{p.last_name}</span>
           </button>
         ))}
       </div>
       <button
         onPointerDown={onNone}
-        className="w-full py-2 rounded-xl border-2 border-dashed border-gray-300 text-sm text-gray-400
+        className="w-full py-1.5 sm:py-2 rounded-xl border-2 border-dashed border-gray-300 text-xs sm:text-sm text-gray-400
           bg-gray-50 active:scale-95 transition-transform"
       >
         {noneLabel}
@@ -185,7 +189,7 @@ function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
           <button
             key={z}
             onPointerDown={() => onZone(z)}
-            className="h-14 rounded-xl border-2 border-green-300 bg-green-50 text-xs font-semibold
+            className="h-10 sm:h-12 md:h-14 rounded-xl border-2 border-green-300 bg-green-50 text-[11px] sm:text-xs font-semibold
               text-green-800 hover:bg-green-100 active:scale-95 transition-transform"
           >
             {labels[z]}
@@ -195,18 +199,18 @@ function ZoneGrid({ onZone, onBlocked, onWide, onPost }: {
       <div className={`grid ${onBlocked ? 'grid-cols-3' : 'grid-cols-2'} gap-1 mt-1`}>
         {onBlocked && (
           <button onPointerDown={onBlocked}
-            className="py-3 rounded-xl border-2 border-slate-300 bg-slate-50 text-xs font-semibold text-slate-600
+            className="py-2 sm:py-2.5 md:py-3 rounded-xl border-2 border-slate-300 bg-slate-50 text-[11px] sm:text-xs font-semibold text-slate-600
               active:scale-95 transition-transform">
             Blokkað
           </button>
         )}
         <button onPointerDown={onPost}
-          className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
+          className="py-2 sm:py-2.5 md:py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-[11px] sm:text-xs font-semibold text-yellow-700
             active:scale-95 transition-transform">
           Stöng
         </button>
         <button onPointerDown={onWide}
-          className="py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-xs font-semibold text-yellow-700
+          className="py-2 sm:py-2.5 md:py-3 rounded-xl border-2 border-yellow-300 bg-yellow-50 text-[11px] sm:text-xs font-semibold text-yellow-700
             active:scale-95 transition-transform">
           Framhjá
         </button>
@@ -227,21 +231,24 @@ function ScoreBar() {
   const isOnline = useMatchStore(s => s.isOnline)
   const isTrackedHome = match?.tracked_team_id === match?.home_team_id
   return (
-    <div className="flex items-center justify-between bg-slate-900 text-white px-4 py-2 h-14 shrink-0">
-      <div className="flex items-center gap-2">
+    <div className="flex items-center justify-between bg-slate-900 text-white px-2 sm:px-4 py-1.5 sm:py-2 h-11 sm:h-14 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2">
         <span className={`w-2 h-2 rounded-full ${isOnline ? 'bg-green-400' : 'bg-red-400'}`} />
-        <span className="text-xs text-slate-400">{isOnline ? 'Live' : 'Offline'}</span>
+        <span className="hidden sm:inline text-xs text-slate-400">{isOnline ? 'Live' : 'Offline'}</span>
       </div>
-      <div className="flex items-center gap-4 text-2xl font-bold tabular-nums">
-        <span>{homeTeam?.name ?? 'Heimalið'}</span>
+      <div className="flex items-center gap-1.5 sm:gap-4 text-sm sm:text-xl md:text-2xl font-bold tabular-nums truncate">
+        <span className="truncate max-w-[70px] sm:max-w-none">{homeTeam?.name ?? 'Heimalið'}</span>
         <span>
           {isTrackedHome ? trackedScore : opponentScore}
           {' – '}
           {isTrackedHome ? opponentScore : trackedScore}
         </span>
-        <span>{awayTeam?.name ?? 'Gestir'}</span>
+        <span className="truncate max-w-[70px] sm:max-w-none">{awayTeam?.name ?? 'Gestir'}</span>
       </div>
-      <span className="text-sm text-slate-400">Leikhluti {period}</span>
+      <span className="text-[11px] sm:text-sm text-slate-400 shrink-0">
+        <span className="sm:hidden">Hl. {period}</span>
+        <span className="hidden sm:inline">Leikhluti {period}</span>
+      </span>
     </div>
   )
 }
@@ -267,45 +274,45 @@ function TopBar({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) => v
   const opponentAttacks = events.filter(e => e.event_type === 'ATTACK' && e.team_id === opponentTeamId).length
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-slate-100 border-b border-slate-200 flex-wrap shrink-0">
+    <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-3 py-1.5 sm:py-2 bg-slate-100 border-b border-slate-200 flex-wrap shrink-0">
 
       {/* Minute counter */}
       <div className="flex items-center gap-0.5 bg-white rounded-lg border border-gray-300 overflow-hidden">
         <button onPointerDown={() => setMinute(Math.max(0, minute - 1))}
-          className="px-2 py-1.5 text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">−</button>
-        <span className="w-9 text-center font-bold text-sm tabular-nums">{minute}'</span>
+          className="px-1.5 sm:px-2 py-1 sm:py-1.5 text-sm sm:text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">−</button>
+        <span className="w-7 sm:w-9 text-center font-bold text-xs sm:text-sm tabular-nums">{minute}'</span>
         <button onPointerDown={() => setMinute(minute + 1)}
-          className="px-2 py-1.5 text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">+</button>
+          className="px-1.5 sm:px-2 py-1 sm:py-1.5 text-sm sm:text-base font-bold text-gray-600 hover:bg-gray-100 active:scale-95">+</button>
       </div>
 
       {/* Attack counters */}
       <button onPointerDown={() => logAttack(match.tracked_team_id)}
-        className="flex items-center gap-1.5 bg-green-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+        className="flex items-center gap-1.5 bg-green-600 text-white rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold
           active:scale-95 transition-transform select-none">
         Sókn
-        <span className="bg-green-800 rounded-full w-5 h-5 flex items-center justify-center text-xs tabular-nums">
+        <span className="bg-green-800 rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs tabular-nums">
           {trackedAttacks}
         </span>
       </button>
       <button onPointerDown={() => logAttack(opponentTeamId)}
-        className="flex items-center gap-1.5 bg-orange-500 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+        className="flex items-center gap-1.5 bg-orange-500 text-white rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold
           active:scale-95 transition-transform select-none">
         Vörn
-        <span className="bg-orange-700 rounded-full w-5 h-5 flex items-center justify-center text-xs tabular-nums">
+        <span className="bg-orange-700 rounded-full w-4 h-4 sm:w-5 sm:h-5 flex items-center justify-center text-[10px] sm:text-xs tabular-nums">
           {opponentAttacks}
         </span>
       </button>
 
       {/* Substitution */}
       <button onPointerDown={() => setFlow({ s: 'sub_pick_in' })}
-        className="bg-slate-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+        className="bg-slate-600 text-white rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold
           active:scale-95 transition-transform select-none">
         Skipti
       </button>
 
       {/* Undo */}
       <button onPointerDown={undoLast}
-        className="bg-red-100 text-red-700 border border-red-200 rounded-lg px-3 py-1.5 text-sm font-semibold
+        className="bg-red-100 text-red-700 border border-red-200 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold
           active:scale-95 transition-transform select-none">
         Undo
       </button>
@@ -326,17 +333,17 @@ function TopBar({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) => v
               } finally { setLoading(false) }
             }}
             disabled={loading}
-            className="bg-green-600 text-white rounded-lg px-3 py-1.5 text-sm font-semibold active:scale-95">
+            className="bg-green-600 text-white rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold active:scale-95">
             {loading ? '…' : 'Já'}
           </button>
           <button onPointerDown={() => setConfirming(false)}
-            className="bg-gray-200 text-gray-700 rounded-lg px-3 py-1.5 text-sm active:scale-95">
+            className="bg-gray-200 text-gray-700 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm active:scale-95">
             Nei
           </button>
         </div>
       ) : (
         <button onPointerDown={() => setConfirming(true)}
-          className="bg-slate-700 text-white rounded-lg px-3 py-1.5 text-sm font-semibold
+          className="bg-slate-700 text-white rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm font-semibold
             active:scale-95 transition-transform select-none">
           Ljúka
         </button>
@@ -345,7 +352,7 @@ function TopBar({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) => v
       {/* Cancel current flow */}
       {flow.s !== 'idle' && (
         <button onPointerDown={() => setFlow({ s: 'idle' })}
-          className="ml-auto bg-gray-200 text-gray-600 rounded-lg px-3 py-1.5 text-sm
+          className="ml-auto bg-gray-200 text-gray-600 rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm
             active:scale-95 transition-transform select-none">
           Hætta við
         </button>
@@ -425,9 +432,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'category') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Veldu flokk</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-green-600"  label="Sókn"      size="lg" onTap={() => setFlow({ s: 'atk_sub', pid, tid })} />
           <Btn color="bg-blue-600"   label="Vörn"       size="lg" onTap={() => setFlow({ s: 'def_sub', pid, tid })} />
           <Btn color="bg-purple-600" label="Markmaður"  size="lg" onTap={() => setFlow({ s: 'gk_sub',  pid, tid })} />
@@ -443,9 +450,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_sub') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Sókn → veldu aðgerð</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-green-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'atk_shot_origin', pid, tid })} />
           <Btn color="bg-green-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'atk_other', pid, tid })} />
         </div>
@@ -456,9 +463,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_origin') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Hvaðan kom árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {ORIGINS.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'atk_shot_direction', pid, tid, origin: v })} />
@@ -471,10 +478,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_direction') {
     const { pid, tid, origin } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Í hvaða átt er árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {DIRECTIONS.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'atk_shot_range', pid, tid, origin, direction: v })} />
@@ -487,10 +494,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_range') {
     const { pid, tid, origin, direction } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction]]} />
         <StepTitle>Hvaðan kom skotið?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'atk_shot_phase', pid, tid, origin, direction, range: v })} />
@@ -503,10 +510,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_phase') {
     const { pid, tid, origin, direction, range } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range]]} />
         <StepTitle>Tegund sóknar</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {PHASES.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label}
               onTap={() => setFlow({ s: 'atk_shot_numerical', pid, tid, origin, direction, range, phase: v })} />
@@ -519,10 +526,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_numerical') {
     const { pid, tid, origin, direction, range, phase } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase]]} />
         <StepTitle>Leiktala</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           {ATK_NUMERICALS.map(({ v, label }) => (
             <Btn key={v} color="bg-green-600" label={label}
               onTap={() => setFlow({ s: 'atk_shot_assist', pid, tid, origin, direction, range, phase, numerical: v })} />
@@ -539,7 +546,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
 
     if (isPenalty) {
       return (
-        <div className="p-4">
+        <div className="p-2 sm:p-3 md:p-4">
           <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
           <StepTitle>Vítasending — hverjir sendi?</StepTitle>
           <PlayerPickerGrid
@@ -553,7 +560,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     }
 
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hver átti stoðsendinguna?</StepTitle>
         <PlayerPickerGrid
@@ -569,7 +576,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_fiskad_viti') {
     const { pid, tid, origin, direction, phase, numerical, vitasendingId } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], 'Víti', PHASE_LABEL[phase], NUMERICAL_LABEL[numerical], vitasendingId ? `Vítasending: ${playerLabel(vitasendingId)}` : undefined]} />
         <StepTitle>Fiskað víti — hverjum var gert víti á?</StepTitle>
         <PlayerPickerGrid
@@ -603,7 +610,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     }
 
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
@@ -619,10 +626,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_shot_outcome') {
     const { pid, tid, origin, direction, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Niðurstaða</StepTitle>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <Btn color="bg-green-600" label="Mark"  size="lg"
             onTap={() => setFlow({ s: 'atk_shot_hand_up', pid, tid, origin, direction, range, phase, numerical, assistId, vitasendingId, fiskadVitiId, zone, subType: 'goal' })} />
           <Btn color="bg-slate-600" label="Varið" size="lg"
@@ -663,10 +670,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     }
 
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], subType === 'goal' ? 'Mark' : 'Varið']} />
         <StepTitle>Höndin uppi?</StepTitle>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <Btn color="bg-green-600" label="Já"  size="lg" onTap={() => commitShot(true)} />
           <Btn color="bg-slate-600" label="Nei" size="lg" onTap={() => commitShot(false)} />
         </div>
@@ -677,9 +684,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_other') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Annað — sókn</StepTitle>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-green-700" label="Tapaður bolti"  onTap={() => setFlow({ s: 'atk_turnover', pid, tid })} />
           <Btn color="bg-green-700" label="Sóknarfrákast"
             onTap={() => done({ event_type: 'ATTACKING_ACTION', player_id: pid, team_id: tid, sub_type: 'offensive_rebound' })} />
@@ -695,9 +702,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_turnover') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Tapaður bolti — tegund</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-orange-600" label="Sóknarbrot"      onTap={() => setFlow({ s: 'atk_turnover_origin', pid, tid, subType: 'offensive_foul' })} />
           <Btn color="bg-orange-600" label="Sendingarmistök" onTap={() => setFlow({ s: 'atk_turnover_origin', pid, tid, subType: 'bad_pass' })} />
           <Btn color="bg-orange-600" label="Töf"             onTap={() => setFlow({ s: 'atk_turnover_origin', pid, tid, subType: 'delay' })} />
@@ -710,9 +717,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_turnover_origin') {
     const { pid, tid, subType } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Hvaðan kom árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {ORIGINS.map(({ v, label }) => (
             <Btn key={v} color="bg-orange-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'atk_turnover_direction', pid, tid, subType, origin: v })} />
@@ -725,10 +732,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'atk_turnover_direction') {
     const { pid, tid, subType, origin } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Í hvaða átt er árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {DIRECTIONS.map(({ v, label }) => (
             <Btn key={v} color="bg-orange-600" label={label} size="lg"
               onTap={() => done({
@@ -751,9 +758,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_sub') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Markmaður → veldu aðgerð</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-purple-600" label="Skot"  size="lg" onTap={() => setFlow({ s: 'gk_shot_origin', pid, tid })} />
           <Btn color="bg-purple-700" label="Annað" size="lg" onTap={() => setFlow({ s: 'gk_other', pid, tid })} />
         </div>
@@ -764,9 +771,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_origin') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Hvaðan kom árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {ORIGINS.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'gk_shot_direction', pid, tid, origin: v })} />
@@ -779,10 +786,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_direction') {
     const { pid, tid, origin } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Í hvaða átt er árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {DIRECTIONS.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'gk_shot_range', pid, tid, origin, direction: v })} />
@@ -795,10 +802,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_range') {
     const { pid, tid, origin, direction } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction]]} />
         <StepTitle>Hvaðan kom skotið frá?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {RANGES.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'gk_shot_phase', pid, tid, origin, direction, range: v })} />
@@ -811,10 +818,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_phase') {
     const { pid, tid, origin, direction, range } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range]]} />
         <StepTitle>Tegund sóknar</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {PHASES.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label}
               onTap={() => setFlow({ s: 'gk_shot_numerical', pid, tid, origin, direction, range, phase: v })} />
@@ -827,10 +834,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_numerical') {
     const { pid, tid, origin, direction, range, phase } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase]]} />
         <StepTitle>Leiktala</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           {GK_NUMERICALS.map(({ v, label }) => (
             <Btn key={v} color="bg-purple-600" label={label}
               onTap={() => setFlow({ s: 'gk_shot_zone', pid, tid, origin, direction, range, phase, numerical: v })} />
@@ -843,7 +850,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_zone') {
     const { pid, tid, origin, direction, range, phase, numerical } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Hvert fór skotið?</StepTitle>
         <ZoneGrid
@@ -858,10 +865,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_outcome') {
     const { pid, tid, origin, direction, range, phase, numerical, zone } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], PHASE_LABEL[phase], NUMERICAL_LABEL[numerical]]} />
         <StepTitle>Niðurstaða</StepTitle>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <Btn color="bg-purple-600" label="Varin" size="lg"
             onTap={() => setFlow({ s: 'gk_shot_hand_up', pid, tid, origin, direction, range, phase, numerical, zone, subType: 'save' })} />
           <Btn color="bg-red-600"    label="Mark"  size="lg"
@@ -874,10 +881,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_shot_hand_up') {
     const { pid, tid, origin, direction, range, phase, numerical, zone, subType } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin], DIRECTION_LABEL[direction], RANGE_LABEL[range], subType === 'save' ? 'Varin' : 'Mark']} />
         <StepTitle>Höndin uppi?</StepTitle>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <Btn color="bg-green-600" label="Já"  size="lg"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: subType, shot_range: range, phase_type: phase, numerical_state: numerical, zone, context: { attack_origin: origin, attack_direction: direction, hand_up: true } })} />
           <Btn color="bg-slate-600" label="Nei" size="lg"
@@ -890,9 +897,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'gk_other') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Annað — markmaður</StepTitle>
-        <div className="grid grid-cols-1 gap-3">
+        <div className="grid grid-cols-1 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-purple-600" label="Tómur fasi (3 mörk á okkur í röð)"
             onTap={() => done({ event_type: 'GOALKEEPER_ACTION', player_id: pid, team_id: tid, sub_type: 'empty_phase' })} />
           <Btn color="bg-purple-600" label="Jákvæð viðbrögð"
@@ -909,9 +916,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_sub') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Vörn → veldu flokk</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-blue-600"  label="Brot"    size="lg" onTap={() => setFlow({ s: 'def_brot_type', pid, tid })} />
           <Btn color="bg-blue-600"  label="Annað"   size="lg" onTap={() => setFlow({ s: 'def_other', pid, tid })} />
           <Btn color="bg-blue-600"  label="Refsing" size="lg" onTap={() => setFlow({ s: 'def_refsing', pid, tid })} />
@@ -923,9 +930,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_brot_type') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Brot — tegund</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-blue-600" label="Fríkast" size="lg"
             onTap={() => setFlow({ s: 'def_brot_origin', pid, tid, foulSub: 'attacking_foul' })} />
           <Btn color="bg-blue-600" label="Víti"    size="lg"
@@ -938,10 +945,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_brot_origin') {
     const { pid, tid, foulSub } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[foulSub === 'attacking_foul' ? 'Fríkast' : 'Víti']} />
         <StepTitle>Hvaðan kom árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {ORIGINS.map(({ v, label }) => (
             <Btn key={v} color="bg-blue-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'def_brot_direction', pid, tid, foulSub, origin: v })} />
@@ -954,10 +961,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_brot_direction') {
     const { pid, tid, foulSub, origin } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[foulSub === 'attacking_foul' ? 'Fríkast' : 'Víti', ORIGIN_LABEL[origin]]} />
         <StepTitle>Í hvaða átt er árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {DIRECTIONS.map(({ v, label }) => (
             <Btn key={v} color="bg-blue-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'def_brot_card', pid, tid, foulSub, origin, direction: v })} />
@@ -985,10 +992,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     }
 
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[foulSub === 'attacking_foul' ? 'Fríkast' : 'Víti', ORIGIN_LABEL[origin], DIRECTION_LABEL[direction]]} />
         <StepTitle>Refsing</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-yellow-500" label="Gult spjald" onTap={() => commitBrot('yellow_card')} />
           <Btn color="bg-red-600"    label="2 mín"       onTap={() => commitBrot('2min')} />
           <Btn color="bg-red-800"    label="Rautt spjald" onTap={() => commitBrot('red_card')} />
@@ -1006,9 +1013,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
       setFlow({ s: 'def_other_origin', pid, tid, sub })
 
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Annað — vörn</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-blue-600" label="Árás 1 á 1"      onTap={() => setFlow({ s: 'def_duel_outcome', pid, tid })} />
           <Btn color="bg-blue-600" label="Hár Kontakt"      onTap={() => defAction('high_contact')} />
           <Btn color="bg-blue-600" label="Stolinn bolti"    onTap={() => defActionWithCombo('interception')} />
@@ -1025,9 +1032,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_duel_outcome') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Árás 1 á 1 — niðurstaða</StepTitle>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3 md:gap-4">
           <Btn color="bg-blue-600" label="Vann"   size="lg"
             onTap={() => setFlow({ s: 'def_other_origin', pid, tid, sub: 'duel_won' })} />
           <Btn color="bg-blue-400" label="Tapaði" size="lg"
@@ -1040,9 +1047,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_other_origin') {
     const { pid, tid, sub } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Hvaðan kom árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {ORIGINS.map(({ v, label }) => (
             <Btn key={v} color="bg-blue-600" label={label} size="lg"
               onTap={() => setFlow({ s: 'def_other_direction', pid, tid, sub, origin: v })} />
@@ -1055,10 +1062,10 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_other_direction') {
     const { pid, tid, sub, origin } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <Breadcrumb items={[ORIGIN_LABEL[origin]]} />
         <StepTitle>Í hvaða átt er árásin?</StepTitle>
-        <div className="grid grid-cols-3 gap-3">
+        <div className="grid grid-cols-3 gap-1.5 sm:gap-2 md:gap-3">
           {DIRECTIONS.map(({ v, label }) => (
             <Btn key={v} color="bg-blue-600" label={label} size="lg"
               onTap={() => done({
@@ -1077,9 +1084,9 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'def_refsing') {
     const { pid, tid } = flow
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Refsing</StepTitle>
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-1.5 sm:gap-2 md:gap-3">
           <Btn color="bg-yellow-500" label="Gult spjald"
             onTap={() => done({ event_type: 'SUSPENSION', player_id: pid, team_id: tid, sub_type: 'yellow_card' })} />
           <Btn color="bg-red-600"    label="2 mín"
@@ -1100,7 +1107,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
   if (flow.s === 'sub_pick_in') {
     const bench = onBench.length > 0 ? onBench : trackedPlayers
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Skipti — kemur INN</StepTitle>
         <PlayerPickerGrid
           players={bench}
@@ -1116,7 +1123,7 @@ function FlowPanel({ flow, setFlow }: { flow: FlowStep; setFlow: (f: FlowStep) =
     const { playerInId } = flow
     const court = onCourt.length > 0 ? onCourt : trackedPlayers.filter(p => p.id !== playerInId)
     return (
-      <div className="p-4">
+      <div className="p-2 sm:p-3 md:p-4">
         <StepTitle>Skipti — fer ÚT</StepTitle>
         <PlayerPickerGrid
           players={court}
@@ -1166,23 +1173,23 @@ export function EventLogger() {
 
       <div className="flex flex-1 overflow-hidden">
         {/* Left: player panel */}
-        <div className="w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-2 gap-1 shrink-0">
+        <div className="w-[100px] sm:w-[140px] md:w-[180px] bg-white border-r border-gray-200 flex flex-col overflow-y-auto p-1 sm:p-2 gap-1 shrink-0">
           <p className="text-xs font-semibold text-slate-500 px-1 pt-1 uppercase tracking-wide">Á velli</p>
           {trackedPlayers.filter(p => lineupPlayerIds.includes(p.id)).map(p => (
             <button
               key={p.id}
               onPointerDown={() => selectPlayer(p.id, p.team_id)}
               className={`
-                flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
-                text-sm font-semibold select-none active:scale-95 transition-transform
+                flex flex-col items-center justify-center rounded-xl border-2 p-1 sm:p-2 min-h-[46px] sm:min-h-[58px] md:min-h-[68px]
+                text-xs sm:text-sm font-semibold select-none active:scale-95 transition-transform
                 ${selectedPid === p.id
                   ? 'bg-blue-600 border-blue-700 text-white'
                   : 'bg-white border-gray-300 text-gray-800 hover:border-blue-400'
                 }
               `}
             >
-              <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
-              <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+              <span className="text-base sm:text-lg md:text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+              <span className="mt-0.5 text-[10px] sm:text-xs truncate max-w-[38px] sm:max-w-[52px] md:max-w-[64px]">{p.last_name}</span>
             </button>
           ))}
 
@@ -1194,16 +1201,16 @@ export function EventLogger() {
               key={p.id}
               onPointerDown={() => selectPlayer(p.id, p.team_id)}
               className={`
-                flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
-                text-sm font-semibold select-none active:scale-95 transition-transform
+                flex flex-col items-center justify-center rounded-xl border-2 p-1 sm:p-2 min-h-[46px] sm:min-h-[58px] md:min-h-[68px]
+                text-xs sm:text-sm font-semibold select-none active:scale-95 transition-transform
                 ${selectedPid === p.id
                   ? 'bg-blue-600 border-blue-700 text-white'
                   : 'bg-gray-50 border-gray-200 text-gray-400 hover:border-blue-300'
                 }
               `}
             >
-              <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
-              <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+              <span className="text-base sm:text-lg md:text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+              <span className="mt-0.5 text-[10px] sm:text-xs truncate max-w-[38px] sm:max-w-[52px] md:max-w-[64px]">{p.last_name}</span>
             </button>
           ))}
 
@@ -1215,16 +1222,16 @@ export function EventLogger() {
                   key={p.id}
                   onPointerDown={() => selectPlayer(p.id, p.team_id)}
                   className={`
-                    flex flex-col items-center justify-center rounded-xl border-2 p-2 min-h-[68px]
-                    text-sm font-semibold select-none active:scale-95 transition-transform
+                    flex flex-col items-center justify-center rounded-xl border-2 p-1 sm:p-2 min-h-[46px] sm:min-h-[58px] md:min-h-[68px]
+                    text-xs sm:text-sm font-semibold select-none active:scale-95 transition-transform
                     ${selectedPid === p.id
                       ? 'bg-orange-500 border-orange-600 text-white'
                       : 'bg-gray-50 border-gray-200 text-gray-500 hover:border-orange-300'
                     }
                   `}
                 >
-                  <span className="text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
-                  <span className="mt-0.5 text-xs truncate max-w-[64px]">{p.last_name}</span>
+                  <span className="text-base sm:text-lg md:text-xl font-bold leading-none">{p.jersey_number ?? '?'}</span>
+                  <span className="mt-0.5 text-[10px] sm:text-xs truncate max-w-[38px] sm:max-w-[52px] md:max-w-[64px]">{p.last_name}</span>
                 </button>
               ))}
             </>
