@@ -149,6 +149,8 @@ function AtkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
       <TdTriple goals={r.goals} shots={r.shots} highlight={isTotals} {...tdp} />
       <TdTriple goals={r.penGoals} shots={r.penShots} {...tdp} />
       <TdTriple goals={r.cornGoals} shots={r.cornShots} {...tdp} />
+      <TdTriple goals={r.cornLeftGoals} shots={r.cornLeftShots} {...tdp} />
+      <TdTriple goals={r.cornRightGoals} shots={r.cornRightShots} {...tdp} />
       <TdTriple goals={r.nineMGoals} shots={r.nineMShots} {...tdp} />
       <TdTriple goals={r.s78Goals} shots={r.s78Shots} {...tdp} />
       <TdTriple goals={r.s6mGoals} shots={r.s6mShots} {...tdp} />
@@ -194,6 +196,8 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="Samtals" colSpan={3} />
             <ThGroup label="Víti" colSpan={3} />
             <ThGroup label="Horn" colSpan={3} />
+            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Hægra Horn" colSpan={3} />
             <ThGroup label="9m+" colSpan={3} />
             <ThGroup label="7–8m" colSpan={3} />
             <ThGroup label="6m" colSpan={3} />
@@ -206,12 +210,12 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="7á6" colSpan={3} />
             <ThGroup label="6á6" colSpan={3} />
             <ThGroup label="Annað" colSpan={7} />
-            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Vinstra Horn (uppruni)" colSpan={3} />
             <ThGroup label="Vinstri Skytta" colSpan={3} />
             <ThGroup label="Vinstri Miðja" colSpan={3} />
             <ThGroup label="Hægri Miðja" colSpan={3} />
             <ThGroup label="Hægri Skytta" colSpan={3} />
-            <ThGroup label="Hægra Horn" colSpan={3} />
+            <ThGroup label="Hægra Horn (uppruni)" colSpan={3} />
             <ThGroup label="Annað (Árás)" colSpan={3} />
             <ThGroup label="Höndin uppi" colSpan={3} />
             <ThGroup label="Höndin niðri" colSpan={3} />
@@ -219,7 +223,7 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
           <tr className="border-b border-gray-200 bg-gray-50">
             <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
             <th className="sticky left-[110px] z-20 bg-gray-50 border-r border-gray-200" />
-            {Array.from({ length: 14 }).map((_, i) => (
+            {Array.from({ length: 16 }).map((_, i) => (
               <><Th key={`g${i}`}>M</Th><Th key={`s${i}`}>Skot</Th><Th key={`p${i}`}>%</Th></>
             ))}
             <Th>Sk.Færi</Th><Th>Stoð</Th><Th>Vítas</Th><Th>Fisk.V</Th>
@@ -327,6 +331,8 @@ function GkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
       <Td className={r.savedCorn > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedCorn)}</Td>
       <Td className="text-gray-500">{va(r.facedCorn)}</Td>
       <Td className="text-gray-500">{pct(r.savedCorn, r.facedCorn)}</Td>
+      <TdGKPair saved={r.savedCornLeft} faced={r.facedCornLeft} va={va} />
+      <TdGKPair saved={r.savedCornRight} faced={r.facedCornRight} va={va} />
       <Td className={r.savedNineM > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedNineM)}</Td>
       <Td className="text-gray-500">{va(r.facedNineM)}</Td>
       <Td className="text-gray-500">{pct(r.savedNineM, r.facedNineM)}</Td>
@@ -388,6 +394,8 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="Samtals" colSpan={3} />
             <ThGroup label="Víti" colSpan={3} />
             <ThGroup label="Horn" colSpan={3} />
+            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Hægra Horn" colSpan={3} />
             <ThGroup label="9m+" colSpan={3} />
             <ThGroup label="7–8m" colSpan={3} />
             <ThGroup label="6m" colSpan={3} />
@@ -398,12 +406,12 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
             <ThGroup label="Yfirtala" colSpan={3} />
             <ThGroup label="6á7" colSpan={3} />
             <ThGroup label="Annað" colSpan={2} />
-            <ThGroup label="Vinstra Horn" colSpan={3} />
+            <ThGroup label="Vinstra Horn (uppruni)" colSpan={3} />
             <ThGroup label="Vinstri Skytta" colSpan={3} />
             <ThGroup label="Vinstri Miðja" colSpan={3} />
             <ThGroup label="Hægri Miðja" colSpan={3} />
             <ThGroup label="Hægri Skytta" colSpan={3} />
-            <ThGroup label="Hægra Horn" colSpan={3} />
+            <ThGroup label="Hægra Horn (uppruni)" colSpan={3} />
             <ThGroup label="Annað (Árás)" colSpan={3} />
             <ThGroup label="Höndin uppi" colSpan={3} />
             <ThGroup label="Höndin niðri" colSpan={3} />
@@ -411,7 +419,7 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
           <tr className="border-b border-gray-200 bg-gray-50">
             <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
             <th className="sticky left-[110px] z-20 bg-gray-50 border-r border-gray-200" />
-            {Array.from({ length: 12 }).map((_, i) => (
+            {Array.from({ length: 14 }).map((_, i) => (
               <><Th key={`sv${i}`}>Varin</Th><Th key={`sf${i}`}>Fjöldi</Th><Th key={`sp${i}`}>%</Th></>
             ))}
             <Th>Tóm fasi</Th><Th>Jákv. viðbr.</Th>

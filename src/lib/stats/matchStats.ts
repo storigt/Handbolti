@@ -19,7 +19,10 @@ export interface AttackRow {
   player: Player
   goals: number; shots: number
   penGoals: number; penShots: number
+  // 'corn' = combined Horn total (left + right + pre-016 unsided shots)
   cornGoals: number; cornShots: number
+  cornLeftGoals: number; cornLeftShots: number
+  cornRightGoals: number; cornRightShots: number
   nineMGoals: number; nineMShots: number
   s78Goals: number; s78Shots: number
   s6mGoals: number; s6mShots: number
@@ -61,8 +64,8 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
     const pid = player.id
     const ps = shots.filter(e => e.player_id === pid)
 
-    function rng(range: string): [number, number] {
-      const rs = ps.filter(e => e.shot_range === range)
+    function rng(...ranges: string[]): [number, number] {
+      const rs = ps.filter(e => ranges.includes(e.shot_range ?? ''))
       return [rs.filter(e => e.sub_type === 'goal').length, rs.length]
     }
     function phase(ph: string): [number, number] {
@@ -75,7 +78,9 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
     }
 
     const [penGoals, penShots] = rng('penalty')
-    const [cornGoals, cornShots] = rng('corner_wing')
+    const [cornGoals, cornShots] = rng('corner_wing', 'corner_wing_left', 'corner_wing_right')
+    const [cornLeftGoals, cornLeftShots] = rng('corner_wing_left')
+    const [cornRightGoals, cornRightShots] = rng('corner_wing_right')
     const [nineMGoals, nineMShots] = rng('9m_plus')
     const [s78Goals, s78Shots] = rng('7_8m')
     const [s6mGoals, s6mShots] = rng('6m')
@@ -114,6 +119,7 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
       goals: ps.filter(e => e.sub_type === 'goal').length,
       shots: ps.length,
       penGoals, penShots, cornGoals, cornShots,
+      cornLeftGoals, cornLeftShots, cornRightGoals, cornRightShots,
       nineMGoals, nineMShots, s78Goals, s78Shots,
       s6mGoals, s6mShots, lineGoals, lineShots,
       fbGoals, fbShots, swGoals, swShots, spGoals, spShots,
@@ -143,6 +149,7 @@ export function computeAttack(events: Event[], players: Player[], trackedTeamId:
 export function sumAttack(rows: AttackRow[]): Omit<AttackRow, 'player'> {
   const z: Omit<AttackRow, 'player'> = {
     goals: 0, shots: 0, penGoals: 0, penShots: 0, cornGoals: 0, cornShots: 0,
+    cornLeftGoals: 0, cornLeftShots: 0, cornRightGoals: 0, cornRightShots: 0,
     nineMGoals: 0, nineMShots: 0, s78Goals: 0, s78Shots: 0, s6mGoals: 0, s6mShots: 0,
     lineGoals: 0, lineShots: 0, fbGoals: 0, fbShots: 0, swGoals: 0, swShots: 0,
     spGoals: 0, spShots: 0, infGoals: 0, infShots: 0, supGoals: 0, supShots: 0,
@@ -237,7 +244,10 @@ export interface GKRow {
   player: Player
   saves: number; shotsFaced: number
   savedPen: number; facedPen: number
+  // 'Corn' = combined Horn total (left + right + pre-016 unsided shots)
   savedCorn: number; facedCorn: number
+  savedCornLeft: number; facedCornLeft: number
+  savedCornRight: number; facedCornRight: number
   savedNineM: number; facedNineM: number
   savedS78: number; facedS78: number
   savedS6m: number; facedS6m: number
@@ -270,8 +280,8 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
     const pe = gkEvents.filter(e => e.player_id === pid)
     const shotEv = pe.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry')
 
-    function rng(range: string): [number, number] {
-      const rs = shotEv.filter(e => e.shot_range === range)
+    function rng(...ranges: string[]): [number, number] {
+      const rs = shotEv.filter(e => ranges.includes(e.shot_range ?? ''))
       return [rs.filter(e => e.sub_type === 'save').length, rs.length]
     }
     function phase(ph: string): [number, number] {
@@ -284,7 +294,9 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
     }
 
     const [savedPen, facedPen] = rng('penalty')
-    const [savedCorn, facedCorn] = rng('corner_wing')
+    const [savedCorn, facedCorn] = rng('corner_wing', 'corner_wing_left', 'corner_wing_right')
+    const [savedCornLeft, facedCornLeft] = rng('corner_wing_left')
+    const [savedCornRight, facedCornRight] = rng('corner_wing_right')
     const [savedNineM, facedNineM] = rng('9m_plus')
     const [savedS78, facedS78] = rng('7_8m')
     const [savedS6m, facedS6m] = rng('6m')
@@ -317,6 +329,7 @@ export function computeGK(events: Event[], goalkeepers: Player[], trackedTeamId:
       saves: shotEv.filter(e => e.sub_type === 'save').length,
       shotsFaced: shotEv.length,
       savedPen, facedPen, savedCorn, facedCorn,
+      savedCornLeft, facedCornLeft, savedCornRight, facedCornRight,
       savedNineM, facedNineM, savedS78, facedS78,
       savedS6m, facedS6m, savedLine, facedLine,
       savedFb, facedFb, savedSw, facedSw,
@@ -343,6 +356,7 @@ export function sumGK(rows: GKRow[]): Omit<GKRow, 'player'> {
   const z: Omit<GKRow, 'player'> = {
     saves: 0, shotsFaced: 0,
     savedPen: 0, facedPen: 0, savedCorn: 0, facedCorn: 0,
+    savedCornLeft: 0, facedCornLeft: 0, savedCornRight: 0, facedCornRight: 0,
     savedNineM: 0, facedNineM: 0, savedS78: 0, facedS78: 0,
     savedS6m: 0, facedS6m: 0, savedLine: 0, facedLine: 0,
     savedFb: 0, facedFb: 0, savedSw: 0, facedSw: 0,

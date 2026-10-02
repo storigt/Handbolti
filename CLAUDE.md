@@ -105,6 +105,10 @@ supabase/
     010_auth.sql                   # Added owner_user_id to teams; tightened RLS by team ownership
     011_profiles.sql               # profiles + admins tables; auto-create profile trigger
     012_performance_indexes.sql    # Indexes for RLS subquery paths + common query patterns
+    013_profile_team.sql           # Added tracked_team_id to profiles (cross-device team lookup)
+    014_events_delete_policy.sql   # Added the missing events DELETE RLS policy
+    015_team_archive.sql           # Added is_archived to teams (hide/restore)
+    016_corner_wing_split.sql      # Split corner_wing shot_range into corner_wing_left/right
 public/
   _redirects                       # Netlify SPA fallback (kept for reference)
 vercel.json                        # Vercel SPA rewrite rule (active hosting)
@@ -200,7 +204,8 @@ team_id         UUID FK
 player_id       UUID FK | null
 event_type      TEXT             — see taxonomy below
 sub_type        TEXT | null
-shot_range      TEXT | null      — 6m | 7_8m | 9m_plus | line | penalty | corner_wing
+shot_range      TEXT | null      — 6m | 7_8m | 9m_plus | line | penalty | corner_wing_left | corner_wing_right
+                                   (`corner_wing` is legacy — pre-016 corner shots with no side recorded)
 phase_type      TEXT | null      — set_play | fast_break | second_wave
 numerical_state TEXT | null      — 6v6 | inferiority | superiority | 7v6 | 6v7
 zone            SMALLINT | null  — 1–9 (EHF goal face) | null (blocked/off-target)
@@ -235,7 +240,8 @@ client_id       TEXT UNIQUE      — idempotency key for offline sync deduplicat
 ```
 SHOT
   sub_type:        goal | saved | blocked | post | wide | technical
-  shot_range:      6m | 7_8m | 9m_plus | line | penalty | corner_wing
+  shot_range:      6m | 7_8m | 9m_plus | line | penalty | corner_wing_left | corner_wing_right
+                   corner_wing — LEGACY only (pre-016; side was not recorded)
   phase_type:      set_play | fast_break | second_wave
   numerical_state: 6v6 | inferiority | superiority | 7v6 | 6v7
   zone:            1–9 (goal face) | null (blocked/off-target)
@@ -289,7 +295,7 @@ The `FlowStep` type is a large discriminated union (not Zustand — it's local R
 idle
   → category (player tapped)
     → atk_sub (Sókn category)
-      → atk_shot_range       (pick: Víti | Horn | 9m+ | 7-8m | 6m | Lína)
+      → atk_shot_range       (pick: Víti | Vinstra Horn | Hægra Horn | 9m+ | 7-8m | 6m | Lína)
         → atk_shot_phase     (pick: Hraðaupphlaup | Seinni bylgja | Uppstilltur leikur)
           → atk_shot_numerical (pick: 6á6 | Undirtala | Yfirtala | 7á6)
             → atk_shot_assist  (optional: pick assisting player or skip)

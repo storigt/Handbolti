@@ -64,7 +64,9 @@ export type ShotRange =
   | '9m_plus'     // long range (beyond 9m)
   | 'line'        // lína — pivot/line player
   | 'penalty'     // víti — 7-meter penalty
-  | 'corner_wing' // horn — wing/corner position
+  | 'corner_wing'       // horn — LEGACY: side not recorded (pre-016 data only)
+  | 'corner_wing_left'  // vinstra horn — left wing/corner
+  | 'corner_wing_right' // hægra horn — right wing/corner
 
 /** Phase of play at time of shot. One per shot event. */
 export type PhaseType =

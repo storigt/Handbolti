@@ -62,12 +62,13 @@ type FlowStep =
 // ─── Option data ──────────────────────────────────────────────────────────────
 
 const RANGES: { v: ShotRange; label: string }[] = [
-  { v: 'penalty',     label: 'Víti' },
-  { v: 'corner_wing', label: 'Horn' },
-  { v: '9m_plus',     label: '9m+' },
-  { v: '7_8m',        label: '7–8m' },
-  { v: '6m',          label: '6m' },
-  { v: 'line',        label: 'Lína' },
+  { v: 'penalty',            label: 'Víti' },
+  { v: 'corner_wing_left',   label: 'Vinstra Horn' },
+  { v: 'corner_wing_right',  label: 'Hægra Horn' },
+  { v: '9m_plus',            label: '9m+' },
+  { v: '7_8m',               label: '7–8m' },
+  { v: '6m',                 label: '6m' },
+  { v: 'line',               label: 'Lína' },
 ]
 
 const PHASES: { v: PhaseType; label: string }[] = [
@@ -91,8 +92,10 @@ const GK_NUMERICALS: { v: NumericalState; label: string }[] = [
 ]
 
 const RANGE_LABEL: Record<ShotRange, string> = {
-  penalty: 'Víti', corner_wing: 'Horn', '9m_plus': '9m+',
+  penalty: 'Víti', '9m_plus': '9m+',
   '7_8m': '7–8m', '6m': '6m', line: 'Lína',
+  corner_wing_left: 'Vinstra Horn', corner_wing_right: 'Hægra Horn',
+  corner_wing: 'Horn', // legacy — pre-016 shots, no side recorded
 }
 const PHASE_LABEL: Record<PhaseType, string> = {
   fast_break: 'Hraðaupphlaup', second_wave: 'Seinni bylgja', set_play: 'Uppstilltur leikur',

@@ -287,6 +287,8 @@ function GKReportSection({ rows }: { rows: GKRow[] }) {
               {[
                 { label: 'Víti', saved: gk.savedPen, faced: gk.facedPen },
                 { label: 'Horn', saved: gk.savedCorn, faced: gk.facedCorn },
+                { label: 'Vinstra horn', saved: gk.savedCornLeft, faced: gk.facedCornLeft },
+                { label: 'Hægra horn', saved: gk.savedCornRight, faced: gk.facedCornRight },
                 { label: '9m+', saved: gk.savedNineM, faced: gk.facedNineM },
                 { label: '7–8m', saved: gk.savedS78, faced: gk.facedS78 },
                 { label: '6m', saved: gk.savedS6m, faced: gk.facedS6m },
