@@ -14,6 +14,56 @@ A Progressive Web App for live handball match statistics. A single operator logs
 
 ---
 
+## Brand, language and design system
+
+- **Name:** "Handball Stats" (EN) / "Handboltatölfræði" (IS) — `PRODUCT_NAME` in `src/lib/i18n/lang.ts`.
+- **Language:** every user-facing string exists in both languages side by side: `const t = useT(); t({ en: '…', is: '…' })`.
+  Choice is per device (`localStorage` key `handball_stats_lang`), first visit follows the browser. Never add a one-language string.
+- **Mark:** the goal split into its 9 EHF zones, top corner (zone 3) in cobalt — `src/components/brand/Logo.tsx`, `public/favicon.svg`, `public/icon-*.png`.
+- **Tokens** (Tailwind `@theme` in `src/index.css`): ground `#eef0f3`, surface `#e2e5ea`, ink `#0b0c0e`, muted `#5d6470`,
+  line `#e3e6ea`, accent cobalt `#1f2de6`. Font: Jost (self-hosted, `@fontsource-variable/jost`, works offline).
+- **App screens** follow the tasteskill "Achromatic ledger" style: no colour in the chrome, near-black primary button,
+  cobalt only on the main data element (goals, wins). Sentence case. Numbers in `.num` (tabular).
+- **Landing page** (`src/pages/Landing/`) is shown to logged-out visitors; `#signin` / `#request-access` open the auth screens.
+  Its fragments use FICTIONAL sample data in `sample.ts` (HK Norðri etc.) — replace before claiming anything real.
+- **Vocabulary:** every handball/stat term lives once in `src/lib/i18n/terms.ts` (`T`, `ORIGIN_TEXT`,
+  `EVENT_TEXT`, `SUB_TEXT`) — use it rather than writing a term inline, so the logger, tables, report and
+  dashboard always say the same thing. Stored values (`sub_type`, `attack_origin`, …) never change; only labels.
+- **Shared UI** (`src/components/ui`): `AppBar` (top bar of every in-app screen, holds the language toggle),
+  `PageTitle`, `Button` (primary = near-black, accent = cobalt), `Segmented`, `Tabs`, `Card`, `EmptyLine`, `Input`, `Select`.
+- **Live logger colours** are kept per category on purpose (operators read them at a glance):
+  attack cobalt, defence ink, goalkeeper green, turnovers orange. The flow and button order must not change.
+- **Design skills** live in `.claude/skills/` (design-taste-frontend, web-design-guidelines, playwright-cli).
+  Working files go to `.taste-skill/` (gitignored).
+- **Landing message:** "Your numbers, your rules": stat attack, defence AND goalkeeping as much as you want, trust
+  every number (counted from events, voids kept), play with it (filters, charts, export). Not shot-focused.
+  Its live thing is `TrustDemo` (interactive.tsx): remove/log events and the numbers recount.
+- **Sign-in** (`LoginPage.tsx` + `AuthStage.tsx`): live sample match ticking on the left (wide screens), one-line
+  ticker on phones. "Forgot it?" switches to the email-link mode (no reset-password flow exists).
+- **Match flow** (`lib/stats/flow.ts`, `components/stats/MatchFlow.tsx`): goal difference after each goal, best/worst
+  run, lead changes. Goals counted exactly like the store's score selectors. In the report and the live "Flow" tab.
+- **Indices are user-editable.** Definitions (steps + result formula + green/yellow limits + higher/lower is better)
+  live in `src/lib/stats/indexDefs.ts`; formulas use the safe parser in `src/lib/stats/formula.ts` (no eval;
+  `/` by zero → 0, like the old safeDiv). `DEFAULT_INDICES` reproduce the original six EXACTLY (verified ===
+  against `computeIndices` on 1,000 random matches — re-check if you touch either). `computeIndices().raw`
+  supplies the inputs; never change what an existing input counts. Editor: `IndexEditor.tsx` (from
+  "Edit indices" on `IndexPanel`). Saved per account in `index_settings` (migration 018) via
+  `src/store/indexStore.ts`, with a per-account localStorage copy; the account copy wins unless this device
+  has a newer unsent edit. Dashboard trends, best-player-per-index and the chart builder use the definitions.
+- **Insight tab** (`src/pages/Dashboard/InsightsTab.tsx`, engine `src/lib/insights/`): finds outliers on its own —
+  player vs team, player vs self by situation, rates per possession on court, on/off court, passer→scorer,
+  keeper zones/ranges, opponent scoring spots, 10-minute stretches, match outliers, correlations across matches.
+  Every comparison records its p-value (`P.record`) and ALL are corrected together with Benjamini–Hochberg;
+  levels: strong q≤.05, likely q≤.2, "worth a look" p≤.01. Minimum sample sizes and effect floors are in each
+  generator; expected patterns (fast breaks, 7 m, extra player) are only flagged the surprising way.
+  Dev preview: `?preview=insights` reads a local export from `.taste-skill/insight-data/` (gitignored).
+- **Screen wake lock** while a match is live (`useScreenAwake` in `LiveMatchView.tsx`) so the tablet never sleeps.
+- **Dev-only previews** (sample data, no sign-in, never in production builds): `npm run dev`, then
+  `/?preview=home` (`&state=new`), `logger`, `stats`, `report`, `dashboard`, `setup`, `admin`, `login` (`&mode=signup|magic`).
+  The logger preview is forced offline so nothing it logs can reach Supabase.
+
+---
+
 ## Stack
 
 | Layer | Tech |
@@ -62,8 +112,8 @@ src/
       matchStats.ts                # computeAttack/Defense/GK/TeamStats, sum*, pct helpers
       exportCsv.ts                 # buildCSV, downloadCSV for CSV export
     sync/
-      syncQueue.ts                 # Dexie.js IndexedDB queue: enqueue/flush/void
-      supabaseSync.ts              # upsertEvent (idempotent), syncPendingEvents, voidEventWithSync
+      syncQueue.ts                 # Dexie.js IndexedDB queues (events + court lineups), flushQueue
+      supabaseSync.ts              # upsertEvent/upsertLineup (idempotent), syncPendingEvents (serialized)
   components/
     ui/index.tsx                   # Shared primitives: Button, Card, Input, Select, Spinner
     LiveInput/
@@ -91,6 +141,15 @@ src/
       MatchReport.tsx              # Postgame report: box score, attack/defense/GK tables
     Dashboard/
       SeasonDashboard.tsx          # Season analytics dashboard
+    Landing/                       # Public front page (logged out): LandingPage, copy.ts (EN+IS), sample.ts, fragments
+    Home/
+      HomeScreen.tsx               # Signed-in home: live match, season form, last match, recent matches, teams
+  dev/
+    HomePreview.tsx                # DEV ONLY (?preview=home) — home screen with sample data, not in prod builds
+    ScreenPreview.tsx              # DEV ONLY (?preview=logger|report|dashboard|setup|admin) — sample data
+  components/brand/Logo.tsx        # LogoMark (9-zone goal) + Wordmark
+  lib/i18n/lang.ts                 # useLang (en/is), useT, PRODUCT_NAME
+  lib/i18n/terms.ts                # Shared handball vocabulary in both languages
 supabase/
   migrations/
     001_initial_schema.sql         # Core 9 tables + RLS (open to all authenticated)
@@ -109,6 +168,8 @@ supabase/
     014_events_delete_policy.sql   # Added the missing events DELETE RLS policy
     015_team_archive.sql           # Added is_archived to teams (hide/restore)
     016_corner_wing_split.sql      # Split corner_wing shot_range into corner_wing_left/right
+    017_privacy_views_and_lineups.sql # Views run with caller's RLS (security_invoker); court_lineups owner-only
+    018_index_settings.sql         # Per-account index settings (custom/edited indices), owner-only
 public/
   _redirects                       # Netlify SPA fallback (kept for reference)
 vercel.json                        # Vercel SPA rewrite rule (active hosting)
@@ -445,15 +506,21 @@ Operator tap
   ↓
 1. Event built with client-generated UUID (client_id = id)
 2. Pushed to Zustand state immediately (UI updates instantly)
-3. Written to IndexedDB via enqueue() simultaneously
-4. If online: upsertEvent() → Supabase (UPSERT on client_id — idempotent)
-   If offline: stays in IndexedDB
+3. Written to IndexedDB via enqueue() FIRST, then syncPendingEvents() if online
+4. syncPendingEvents() flushes the queue: lineups first (events FK them), then
+   events, UPSERT on client_id — idempotent. Only ONE flush runs at a time;
+   calls made during a flush schedule another pass, so order is preserved.
 5. On reconnect / focus / online event: syncPendingEvents() flushes queue
 ```
 
-- `src/lib/sync/syncQueue.ts` — `enqueue`, `flushQueue`, `voidEvent`
-- `src/lib/sync/supabaseSync.ts` — `upsertEvent`, `syncPendingEvents`, `voidEventWithSync`
-- Undo: `undoLast()` in store voids the most recent non-voided event
+- `src/lib/sync/syncQueue.ts` — `enqueue`, `enqueueLineup`, `flushQueue`, `markSynced`
+- `src/lib/sync/supabaseSync.ts` — `upsertEvent`, `upsertLineup`, `syncPendingEvents`
+- **Undo/void:** the voided copy of the event (is_voided, void_reason, voided_at) is
+  re-enqueued and upserted like any event. Never dequeue or patch directly — that
+  lost voids when the original had already reached the server. `markSynced` only
+  marks an item synced if the queued copy's is_voided still matches what was sent.
+- **Lineups:** `court_lineups.id` is client-generated (uuidv4) and queued in
+  `lineupQueue`, so substitutions and their lineup_id work offline.
 - Events synced to server are soft-voided (`is_voided = true`), never deleted
 
 ---
@@ -486,6 +553,12 @@ Use `useEffect` watching `data` instead.
 
 ### TanStack Query v5 — `async/await` in `queryFn`
 Supabase returns `PromiseLike`, not `Promise`. Always use `async/await` in `queryFn`.
+
+### Supabase returns at most 1000 rows per request
+`max_rows = 1000` (supabase/config.toml) and the API stops silently at that point — no error.
+Any list that can grow (events above all; also lineups, match history) must go through
+`fetchAll` in `src/lib/supabase/fetchAll.ts`, with an order ending on a unique column (`.order('id')`).
+Before this, the season dashboard computed everything from the first 1000 events only.
 
 ### Supabase PostgREST Joins
 `player:players(*)` join syntax caused ambiguity issues. All multi-table fetches use **two separate queries** joined in TypeScript. See `getRoster` in `queries.ts`.
@@ -543,4 +616,4 @@ All schema changes go through migration files in `supabase/migrations/` — neve
 - **Edge Function for materialized view refresh** — `REFRESH MATERIALIZED VIEW v_season_player_totals` currently runs client-side (may fail due to permissions); should move to a Supabase Edge Function triggered on match finalization
 - **API feed ingestion** — `api_feed_sources` and `api_feed_log` tables exist but are unused
 - **Plus/minus stats** — court_lineups table and lineup_id on events exist, but `v_lineup_stats` / v_plus_minus views are not yet built
-- **Resume match on different device** — match session (period, lineup, minute) is in-memory Zustand state only; if you close the app mid-match you can't resume the live input UI (historical events are safe in Supabase)
+- **Resume match on different device** — the live session (period, lineup, minute) is saved in localStorage, so "Halda áfram leik" resumes on the SAME device only. Finished matches can be reopened from the dashboard (`reopenMatch`).

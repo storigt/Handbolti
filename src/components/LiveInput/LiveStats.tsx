@@ -7,12 +7,17 @@ import { useMinuteFilter, MinuteFilterBar } from '@/components/stats/MinuteFilte
 import { ShotMap } from '@/components/stats/ShotMap'
 import { computeIndices } from '@/lib/stats/indices'
 import { IndexPanel } from '@/components/stats/IndexPanel'
+import { MatchFlow } from '@/components/stats/MatchFlow'
+import { useT } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
+import { Tabs } from '@/components/ui'
 
-type StatsTab = 'attack' | 'defense' | 'gk' | 'team' | 'shotmap' | 'indices'
+type StatsTab = 'attack' | 'defense' | 'gk' | 'team' | 'flow' | 'shotmap' | 'indices'
 
 // ─── Score bar ────────────────────────────────────────────────────────────────
 
 function LiveScoreBar() {
+  const t = useT()
   const trackedScore = useMatchStore(selectTrackedScore)
   const opponentScore = useMatchStore(selectOpponentScore)
   const homeTeam = useMatchStore(s => s.homeTeam)
@@ -21,13 +26,13 @@ function LiveScoreBar() {
   const period = useMatchStore(s => s.currentPeriod)
   const isTrackedHome = match?.home_team_id === match?.tracked_team_id
   return (
-    <div className="flex items-center justify-between px-4 py-2 bg-slate-900 text-white text-sm shrink-0">
-      <span className="font-semibold truncate max-w-[30%]">{homeTeam?.name ?? 'Heimalið'}</span>
-      <span className="font-bold text-lg tabular-nums">
-        {isTrackedHome ? trackedScore : opponentScore} – {isTrackedHome ? opponentScore : trackedScore}
+    <div className="flex items-center gap-3 px-4 h-12 bg-ink text-white shrink-0">
+      <span className="flex-1 min-w-0 truncate text-right font-medium">{homeTeam?.name ?? t(T.home)}</span>
+      <span className="text-[22px] font-semibold num whitespace-nowrap">
+        {isTrackedHome ? trackedScore : opponentScore}<span className="text-white/50 mx-1">–</span>{isTrackedHome ? opponentScore : trackedScore}
       </span>
-      <span className="font-semibold truncate max-w-[30%]">{awayTeam?.name ?? 'Gestir'}</span>
-      <span className="text-slate-400 text-xs">Leikhluti {period}</span>
+      <span className="flex-1 min-w-0 truncate font-medium">{awayTeam?.name ?? t(T.away)}</span>
+      <span className="text-white/70 text-[13px] whitespace-nowrap">{t(T.period)} {period}</span>
     </div>
   )
 }
@@ -35,6 +40,7 @@ function LiveScoreBar() {
 // ─── Main export ──────────────────────────────────────────────────────────────
 
 export function LiveStats() {
+  const t = useT()
   const [tab, setTab] = useState<StatsTab>('attack')
   const allEvents = useMatchStore(useShallow(selectActiveEvents))
   const trackedPlayers = useMatchStore(useShallow(s => s.trackedPlayers))
@@ -56,29 +62,26 @@ export function LiveStats() {
   const minuteFiltered = range.from !== null || range.to !== null
 
   return (
-    <div className="flex flex-col h-full bg-gray-50 overflow-hidden">
+    <div className="flex flex-col h-full bg-ground overflow-hidden">
       <LiveScoreBar />
-      <div className="flex shrink-0 border-b border-gray-200 bg-white overflow-x-auto">
-        {([
-          { v: 'attack' as StatsTab, label: 'Sókn' },
-          { v: 'defense' as StatsTab, label: 'Vörn' },
-          { v: 'gk' as StatsTab, label: 'Markvörður' },
-          { v: 'team' as StatsTab, label: 'Liðstölur' },
-          { v: 'shotmap' as StatsTab, label: 'Skotkort' },
-          { v: 'indices' as StatsTab, label: 'Indexar' },
-        ] as const).map(t => (
-          <button key={t.v} onPointerDown={() => setTab(t.v)}
-            className={`flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap px-3 ${tab === t.v ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
-            {t.label}
-          </button>
-        ))}
+      <div className="bg-white px-2 shrink-0">
+        <Tabs<StatsTab> value={tab} onChange={setTab} label={t({ en: 'Live stats', is: 'Tölfræði' })} options={[
+          { v: 'attack', label: t(T.attack) },
+          { v: 'defense', label: t(T.defence) },
+          { v: 'gk', label: t(T.goalkeeper) },
+          { v: 'team', label: t(T.teamStats) },
+          { v: 'flow', label: t({ en: 'Flow', is: 'Gangur' }) },
+          { v: 'shotmap', label: t(T.shotMap) },
+          { v: 'indices', label: t(T.indices) },
+        ]} />
       </div>
-      {tab !== 'shotmap' && <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />}
-      <div className="flex-1 overflow-auto">
+      {tab !== 'shotmap' && tab !== 'flow' && <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />}
+      <div className="flex-1 overflow-auto bg-white">
         {tab === 'attack' && <AttackTable rows={attackStats} />}
         {tab === 'defense' && <DefenseTable rows={defenseStats} />}
         {tab === 'gk' && <GKTable rows={gkStats} />}
         {tab === 'team' && <TeamStatsTable events={events} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={opponentTeamName} />}
+        {tab === 'flow' && <div className="pt-4"><MatchFlow events={allEvents} trackedTeamId={trackedTeamId} myName={myTeamName} oppName={opponentTeamName} /></div>}
         {tab === 'shotmap' && <ShotMap allEvents={allEvents} players={trackedPlayers} trackedTeamId={trackedTeamId} />}
         {tab === 'indices' && <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />}
       </div>

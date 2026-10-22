@@ -5,7 +5,13 @@ import { LiveMatchView } from '@/components/LiveInput/LiveMatchView'
 import { MatchSetupWizard } from '@/pages/Setup/MatchSetupWizard'
 import { MatchReport } from '@/pages/Report/MatchReport'
 import { SeasonDashboard } from '@/pages/Dashboard/SeasonDashboard'
-import { LoginPage } from '@/pages/Auth/LoginPage'
+import { LoginPage, type AuthMode } from '@/pages/Auth/LoginPage'
+import { useIndexStore } from '@/store/indexStore'
+import { LangToggle } from '@/components/ui'
+import { LandingPage } from '@/pages/Landing/LandingPage'
+import { Wordmark } from '@/components/brand/Logo'
+import { useT } from '@/lib/i18n/lang'
+import { HomeScreen } from '@/pages/Home/HomeScreen'
 import { AdminPage } from '@/pages/Admin/AdminPage'
 import { useMatchStore } from '@/store/matchStore'
 import { syncPendingEvents } from '@/lib/sync/supabaseSync'
@@ -19,8 +25,29 @@ const queryClient = new QueryClient()
 
 function Spinner() {
   return (
-    <div className="flex items-center justify-center h-screen bg-slate-900">
-      <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+    <div className="flex items-center justify-center h-svh bg-ground" role="status" aria-label="Loading">
+      <div className="w-6 h-6 border-2 border-ink border-t-transparent rounded-full animate-spin" />
+    </div>
+  )
+}
+
+function TimedOutScreen() {
+  const t = useT()
+  return (
+    <div className="flex flex-col items-center justify-center min-h-svh bg-ground text-ink gap-4 px-6">
+      <p className="text-[16px] text-center">{t({ en: 'The connection took too long.', is: 'Tenging tók of langan tíma.' })}</p>
+      <button
+        onClick={() => window.location.reload()}
+        className="h-11 px-5 rounded-md bg-accent hover:bg-accent-strong text-white font-medium transition-colors"
+      >
+        {t({ en: 'Try again', is: 'Reyna aftur' })}
+      </button>
+      <button
+        onClick={async () => { await supabase.auth.signOut(); window.location.reload() }}
+        className="text-[14px] text-muted hover:text-ink underline underline-offset-4"
+      >
+        {t({ en: 'Sign out and try again', is: 'Skrá út og reyna aftur' })}
+      </button>
     </div>
   )
 }
@@ -50,98 +77,84 @@ function OnlineSync() {
 
 type AppView = 'home' | 'setup' | 'dashboard' | 'admin'
 
-function HomeScreen({
-  onNewMatch,
-  onResumeMatch,
-  onDashboard,
-  onAdmin,
-  onSignOut,
-  hasSavedTeam,
-  hasSavedMatch,
-  isAdmin,
-  userEmail,
-}: {
-  onNewMatch: () => void
-  onResumeMatch: () => void
-  onDashboard: () => void
-  onAdmin: () => void
-  onSignOut: () => void
-  hasSavedTeam: boolean
-  hasSavedMatch: boolean
-  isAdmin: boolean
-  userEmail: string
-}) {
+function PendingApprovalScreen({ onSignOut, userEmail }: { onSignOut: () => void; userEmail: string }) {
+  const t = useT()
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white gap-6 px-6">
-      <h1 className="text-3xl font-bold tracking-tight">Handbolti</h1>
-      <p className="text-slate-400 text-sm">Handball match statistics</p>
-
-      <div className="flex flex-col gap-3 w-full max-w-xs">
-        {hasSavedMatch && (
+    <div className="min-h-svh bg-ground text-ink flex flex-col">
+      <header className="flex items-center justify-between gap-4 px-4 sm:px-8 py-5">
+        <span className="font-bold uppercase tracking-tight text-[17px]"><Wordmark size={22} /></span>
+        <LangToggle />
+      </header>
+      <main className="flex-1 grid place-items-center px-4 pb-16">
+        <div className="w-full max-w-[440px] bg-white border border-line rounded-xl p-6 sm:p-8 flex flex-col gap-4">
+          <h1 className="text-2xl font-semibold">{t({ en: 'Your account is waiting for approval', is: 'Aðgangurinn bíður samþykkis' })}</h1>
+          <p className="text-[16px] leading-relaxed">
+            {t({
+              en: 'Your account has been created. It is reviewed by hand, and you can start adding your team as soon as it is approved.',
+              is: 'Aðgangurinn hefur verið búinn til. Hann er yfirfarinn og þú getur byrjað að bæta liðinu við um leið og hann hefur verið samþykktur.',
+            })}
+          </p>
+          <p className="text-[14px] text-muted">{t({ en: 'Signed in as', is: 'Skráð inn sem' })} <span className="text-ink font-medium">{userEmail}</span></p>
           <button
-            onClick={onResumeMatch}
-            className="w-full py-4 bg-green-600 hover:bg-green-500 active:bg-green-700 text-white font-semibold rounded-xl text-lg transition-colors"
+            onClick={onSignOut}
+            className="self-start h-10 px-4 rounded-md bg-[#e5e5e5] hover:bg-[#d9d9d9] active:scale-[0.98] text-[15px] font-medium transition"
           >
-            Halda áfram leik
+            {t({ en: 'Sign out', is: 'Skrá út' })}
           </button>
-        )}
-        <button
-          onClick={onNewMatch}
-          className="w-full py-4 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 text-white font-semibold rounded-xl text-lg transition-colors"
-        >
-          New Match
-        </button>
-        {hasSavedTeam && (
-          <button
-            onClick={onDashboard}
-            className="w-full py-4 bg-slate-700 hover:bg-slate-600 active:bg-slate-800 text-white font-semibold rounded-xl text-lg transition-colors"
-          >
-            Season Dashboard
-          </button>
-        )}
-        {isAdmin && (
-          <button
-            onClick={onAdmin}
-            className="w-full py-4 bg-amber-700 hover:bg-amber-600 active:bg-amber-800 text-white font-semibold rounded-xl text-lg transition-colors"
-          >
-            Admin
-          </button>
-        )}
-      </div>
-
-      <div className="absolute bottom-6 flex flex-col items-center gap-1">
-        <p className="text-xs text-slate-500">{userEmail}</p>
-        <button
-          onClick={onSignOut}
-          className="text-xs text-slate-500 hover:text-slate-300 underline"
-        >
-          Sign out
-        </button>
-      </div>
+        </div>
+      </main>
     </div>
   )
 }
 
-function PendingApprovalScreen({ onSignOut, userEmail }: { onSignOut: () => void; userEmail: string }) {
+/**
+ * Logged-out visitors: the landing page first, then sign-in or sign-up.
+ * The URL hash reflects the screen (#signin, #request-access), so links can
+ * be shared and the Back button returns to the landing page.
+ */
+function screenFromHash(): { view: 'landing' } | { view: 'auth'; mode: AuthMode } {
+  const h = window.location.hash
+  if (h === '#signin') return { view: 'auth', mode: 'signin' }
+  if (h === '#request-access') return { view: 'auth', mode: 'signup' }
+  return { view: 'landing' }
+}
+
+function PublicGate() {
+  const [screen, setScreen] = useState(screenFromHash)
+  const [email, setEmail] = useState('')
+
+  useEffect(() => {
+    const onHash = () => setScreen(screenFromHash())
+    window.addEventListener('hashchange', onHash)
+    return () => window.removeEventListener('hashchange', onHash)
+  }, [])
+
+  useEffect(() => { if (screen.view === 'auth') window.scrollTo(0, 0) }, [screen.view])
+
+  if (screen.view === 'auth') {
+    return (
+      <LoginPage
+        key={screen.mode + email}
+        initialMode={screen.mode}
+        initialEmail={email}
+        onBack={() => {
+          // Back to the landing page without leaving a dead "#" in the address bar
+          history.pushState(null, '', window.location.pathname + window.location.search)
+          setScreen({ view: 'landing' })
+        }}
+      />
+    )
+  }
   return (
-    <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white px-6 gap-5">
-      <div className="text-5xl">⏳</div>
-      <h2 className="text-xl font-bold text-center">Aðgangur bíður samþykkis</h2>
-      <p className="text-slate-400 text-sm text-center max-w-sm">
-        Reikningurinn þinn hefur verið búinn til en þarfnast samþykkis áður en þú getur skráð þig inn.
-      </p>
-      <p className="text-xs text-slate-500">{userEmail}</p>
-      <button
-        onClick={onSignOut}
-        className="mt-2 px-5 py-2.5 bg-slate-700 hover:bg-slate-600 text-white text-sm font-medium rounded-xl transition-colors"
-      >
-        Sign out
-      </button>
-    </div>
+    <LandingPage
+      onSignIn={() => { window.location.hash = 'signin' }}
+      onRequestAccess={(e) => { setEmail(e ?? ''); window.location.hash = 'request-access' }}
+    />
   )
 }
 
 function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; userEmail: string; profileTeamId: string | null }) {
+  const t = useT()
   const match = useMatchStore(s => s.match)
   const setSession = useMatchStore(s => s.setSession)
   const resumeSession = useMatchStore(s => s.resumeSession)
@@ -161,6 +174,9 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
     }
     return profileTeamId ?? local
   })
+
+  // Index settings follow the account
+  useEffect(() => { void useIndexStore.getState().load() }, [])
 
   // Bootstrap: if this device has a team cached but the profile doesn't have one yet
   // (e.g. a pre-migration user), push it up to the profile.
@@ -193,11 +209,11 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
       getMatchById(matchId),
       getTeams(),
     ])
-    if (!match) throw new Error('Leikur fannst ekki')
+    if (!match) throw new Error(t({ en: 'Match not found.', is: 'Leikur fannst ekki.' }))
 
     const homeTeam = allTeamsData.find(t => t.id === match.home_team_id) ?? await getTeamById(match.home_team_id)
     const awayTeam = allTeamsData.find(t => t.id === match.away_team_id) ?? await getTeamById(match.away_team_id)
-    if (!homeTeam || !awayTeam) throw new Error('Lið fundust ekki')
+    if (!homeTeam || !awayTeam) throw new Error(t({ en: 'Teams not found.', is: 'Lið fundust ekki.' }))
 
     const [rosterWithPlayers, events] = await Promise.all([
       getRoster(match.id),
@@ -236,7 +252,7 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
       await loadMatchIntoStore(saved.matchId, saved.period, saved.matchMinute, saved.lineupPlayerIds, saved.lineupId)
       setHasSavedMatch(false)
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : 'Tókst ekki að halda áfram leik')
+      setStartError(err instanceof Error ? err.message : t({ en: 'Could not resume the match.', is: 'Tókst ekki að halda áfram leik.' }))
     } finally {
       setStarting(false)
     }
@@ -250,7 +266,7 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
       await reopenMatch(matchId)
       await loadMatchIntoStore(matchId)
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : 'Tókst ekki að opna leik til breytinga')
+      setStartError(err instanceof Error ? err.message : t({ en: 'Could not open the match for editing.', is: 'Tókst ekki að opna leik til breytinga.' }))
     } finally {
       setStarting(false)
     }
@@ -277,27 +293,27 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
       })
       setStarting(false)
     } catch (err) {
-      setStartError(err instanceof Error ? err.message : 'Failed to start match')
+      setStartError(err instanceof Error ? err.message : t({ en: 'Could not start the match.', is: 'Tókst ekki að hefja leikinn.' }))
       setStarting(false)
     }
   }
 
   if (starting) {
     return (
-      <div className="flex items-center justify-center h-screen bg-slate-900 text-white gap-3">
-        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-        <span>Loading match…</span>
+      <div className="flex items-center justify-center min-h-svh bg-ground text-ink gap-3" role="status">
+        <div className="w-5 h-5 border-2 border-ink border-t-transparent rounded-full animate-spin" />
+        <span className="text-[16px]">{t({ en: 'Loading the match…', is: 'Sæki leikinn…' })}</span>
       </div>
     )
   }
 
   if (startError) {
     return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white gap-4">
-        <p className="text-red-400 text-lg">Failed to start match</p>
-        <p className="text-slate-400 text-sm">{startError}</p>
-        <button onClick={() => setStartError(null)} className="px-4 py-2 bg-white text-slate-900 rounded-lg font-medium">
-          Go back
+      <div className="flex flex-col items-center justify-center min-h-svh bg-ground text-ink gap-3 px-6 text-center">
+        <p className="text-[20px] font-semibold">{t({ en: 'The match could not be opened', is: 'Ekki tókst að opna leikinn' })}</p>
+        <p className="text-[15px] text-muted max-w-md">{startError}</p>
+        <button onClick={() => setStartError(null)} className="mt-2 h-10 px-4 rounded-md bg-[#111214] text-white text-[14px] font-medium hover:bg-black transition">
+          {t({ en: 'Back', is: 'Til baka' })}
         </button>
       </div>
     )
@@ -337,12 +353,12 @@ function AppInner({ isAdmin, userEmail, profileTeamId }: { isAdmin: boolean; use
 
   return (
     <HomeScreen
+      teamId={savedTeamId}
       onNewMatch={() => setView('setup')}
       onResumeMatch={handleResumeMatch}
       onDashboard={() => setView('dashboard')}
       onAdmin={() => setView('admin')}
       onSignOut={handleSignOut}
-      hasSavedTeam={!!savedTeamId}
       hasSavedMatch={hasSavedMatch}
       isAdmin={isAdmin}
       userEmail={userEmail}
@@ -418,29 +434,13 @@ function AuthGateWithInner() {
 
   if (session === undefined || (session && profile === undefined)) {
     if (authTimedOut) {
-      return (
-        <div className="flex flex-col items-center justify-center h-screen bg-slate-900 text-white gap-4 px-6">
-          <p className="text-slate-400 text-sm text-center">Tenging tók of langan tíma.</p>
-          <button
-            onClick={() => window.location.reload()}
-            className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-medium rounded-xl transition-colors"
-          >
-            Reyna aftur
-          </button>
-          <button
-            onClick={async () => { await supabase.auth.signOut(); window.location.reload() }}
-            className="text-xs text-slate-500 hover:text-slate-300 underline"
-          >
-            Sign out and retry
-          </button>
-        </div>
-      )
+      return <TimedOutScreen />
     }
     return <Spinner />
   }
 
   if (!session || !profile) {
-    return <LoginPage />
+    return <PublicGate />
   }
 
   async function handleSignOut() {

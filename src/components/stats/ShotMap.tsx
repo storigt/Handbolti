@@ -1,6 +1,9 @@
 import { useMemo, useState } from 'react'
 import type { Event, Player } from '@/lib/db/schema'
 import { useMinuteFilter, MinuteFilterBar } from './MinuteFilter'
+import { useT, type Text } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
+import { Segmented, Select } from '@/components/ui'
 
 type ShotMapMode = 'attack' | 'gk'
 
@@ -16,64 +19,36 @@ interface ZoneStats {
 
 // ─── Zone labels ──────────────────────────────────────────────────────────────
 
-const ZONE_NAMES: Record<number, [string, string]> = {
-  1: ['Vinstri', 'uppi'],
-  2: ['Miðja', 'uppi'],
-  3: ['Hægri', 'uppi'],
-  4: ['Vinstri', 'miðja'],
-  5: ['Miðja', ''],
-  6: ['Hægri', 'miðja'],
-  7: ['Vinstri', 'niðri'],
-  8: ['Miðja', 'niðri'],
-  9: ['Hægri', 'niðri'],
+const ZONE_NAMES: Record<number, Text> = {
+  1: { en: 'Top left', is: 'Vinstri uppi' },
+  2: { en: 'Top centre', is: 'Miðja uppi' },
+  3: { en: 'Top right', is: 'Hægri uppi' },
+  4: { en: 'Middle left', is: 'Vinstri miðja' },
+  5: { en: 'Middle', is: 'Miðja' },
+  6: { en: 'Middle right', is: 'Hægri miðja' },
+  7: { en: 'Low left', is: 'Vinstri niðri' },
+  8: { en: 'Low centre', is: 'Miðja niðri' },
+  9: { en: 'Low right', is: 'Hægri niðri' },
 }
 
-// ─── Zone cell ────────────────────────────────────────────────────────────────
+// ─── Zone cell: three clear steps, cobalt for the hot zones ───────────────────
 
 function ZoneCell({ stat, zone, gkMode }: { stat: ZoneStat; zone: number; gkMode: boolean }) {
+  const t = useT()
   const { shots, goals } = stat
-  const [line1, line2] = ZONE_NAMES[zone] ?? ['', '']
-
-  // In GK mode: saves = shots - goals_conceded, pct = save%
-  // In attack mode: pct = goals/shots = shot efficiency
-  const goodCount = gkMode ? shots - goals : goals
-  const pct = shots > 0 ? Math.round((goodCount / shots) * 100) : null
-
-  let bg = 'bg-gray-50'
-  if (shots > 0) {
-    if (pct === null) bg = 'bg-gray-50'
-    else if (gkMode) {
-      // GK: high save% is green, low save% is bad
-      if (pct >= 60) bg = 'bg-green-200'
-      else if (pct >= 30) bg = 'bg-green-100'
-      else bg = 'bg-orange-100'
-    } else {
-      // Attack: high shot% is green
-      if (goals === 0) bg = 'bg-orange-50'
-      else if (pct >= 60) bg = 'bg-green-200'
-      else if (pct >= 30) bg = 'bg-green-100'
-      else bg = 'bg-green-50'
-    }
-  }
-
-  const ratioColor = gkMode
-    ? (shots - goals > 0 ? 'text-green-800' : shots > 0 ? 'text-orange-600' : 'text-gray-300')
-    : (goals > 0 ? 'text-green-800' : shots > 0 ? 'text-orange-500' : 'text-gray-300')
-
-  const ratioLabel = gkMode
-    ? (shots > 0 ? `${shots - goals}/${shots}` : '—')
-    : (shots > 0 ? `${goals}/${shots}` : '—')
-
+  // In GK mode: good = saves (shots − goals conceded); in attack mode: good = goals
+  const good = gkMode ? shots - goals : goals
+  const p = shots > 0 ? good / shots : null
+  const [hi, mid] = gkMode ? [0.5, 0.25] : [0.6, 0.3]
+  const tone = p === null ? 'bg-[#f5f6f8] text-[#9aa0a8]'
+    : p >= hi ? 'bg-accent text-white'
+    : p >= mid ? 'bg-[#cfd4db] text-ink'
+    : 'bg-[#f5f6f8] text-ink'
   return (
-    <div className={`flex flex-col items-center justify-center gap-0.5 border border-gray-300 ${bg} select-none px-1 py-1.5`}>
-      <div className="text-center leading-tight">
-        <span className="text-[9px] text-gray-400 font-medium block">{line1}</span>
-        {line2 && <span className="text-[9px] text-gray-400 font-medium block">{line2}</span>}
-      </div>
-      <span className={`text-sm font-bold tabular-nums leading-none ${ratioColor}`}>{ratioLabel}</span>
-      {pct !== null && (
-        <span className="text-[9px] text-gray-500 leading-none">{pct}%</span>
-      )}
+    <div className={`flex flex-col items-center justify-center gap-0.5 rounded-[3px] ${tone} select-none px-1 py-1.5`}>
+      <span className="text-[11px] leading-tight opacity-80 text-center">{t(ZONE_NAMES[zone])}</span>
+      <span className="text-[17px] font-semibold num leading-none">{shots > 0 ? `${good}/${shots}` : '—'}</span>
+      {p !== null && <span className="text-[12px] num leading-none opacity-80">{Math.round(p * 100)}%</span>}
     </div>
   )
 }
@@ -81,73 +56,53 @@ function ZoneCell({ stat, zone, gkMode }: { stat: ZoneStat; zone: number; gkMode
 // ─── Goal frame ───────────────────────────────────────────────────────────────
 
 function GoalFrame({ zoneStats, gkMode }: { zoneStats: ZoneStats; gkMode: boolean }) {
+  const t = useT()
   const empty: ZoneStat = { shots: 0, goals: 0 }
   const z = (n: number) => zoneStats.goal[n] ?? empty
   const not = zoneStats.notOnTarget
   const blk = zoneStats.blocked
+  const legend = gkMode
+    ? [{ c: 'bg-accent', l: t({ en: '50% saved or more', is: '50% varið eða meira' }) }, { c: 'bg-[#cfd4db]', l: '25–49%' }, { c: 'bg-[#f5f6f8] border border-line', l: t({ en: 'Under 25%', is: 'Undir 25%' }) }]
+    : [{ c: 'bg-accent', l: t({ en: '60% scored or more', is: '60% nýting eða meira' }) }, { c: 'bg-[#cfd4db]', l: '30–59%' }, { c: 'bg-[#f5f6f8] border border-line', l: t({ en: 'Under 30%', is: 'Undir 30%' }) }]
 
   return (
-    <div className="flex flex-col gap-0 w-full max-w-[420px] mx-auto">
-      <div className="flex items-end mb-0">
-        <div className="w-3 bg-gray-400 rounded-t" style={{ height: 12 }} />
-        <div className="flex-1 flex items-center justify-center py-0.5 bg-gray-100 border-x border-t border-gray-400 rounded-t">
-          <span className="text-[10px] text-gray-400 font-medium tracking-wide uppercase">
-            {gkMode ? 'Skot á okkur' : 'Mark'}
-          </span>
-        </div>
-        <div className="w-3 bg-gray-400 rounded-t" style={{ height: 12 }} />
+    <div className="flex flex-col w-full max-w-[460px] mx-auto">
+      {/* 3 m × 2 m goal face, posts and bar in ink */}
+      <div className="grid grid-cols-3 gap-[3px] p-[3px] border-[6px] border-b-0 border-ink bg-white" style={{ gridTemplateRows: 'repeat(3, 84px)' }}
+        aria-label={gkMode ? t({ en: 'Shots on our goal by zone', is: 'Skot á okkar mark eftir svæðum' }) : t({ en: 'Our shots by zone', is: 'Skotin okkar eftir svæðum' })}>
+        {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <ZoneCell key={n} stat={z(n)} zone={n} gkMode={gkMode} />)}
       </div>
 
-      <div
-        className="border-2 border-gray-500 rounded-b grid"
-        style={{ gridTemplateColumns: 'repeat(3, 1fr)', gridTemplateRows: 'repeat(3, 76px)' }}
-      >
-        {[1,2,3,4,5,6,7,8,9].map(n => (
-          <ZoneCell key={n} stat={z(n)} zone={n} gkMode={gkMode} />
-        ))}
-      </div>
-
-      <div className="grid grid-cols-2 gap-2 mt-2">
+      <dl className={`grid ${gkMode ? 'grid-cols-1' : 'grid-cols-2'} gap-3 mt-4`}>
         {gkMode ? (
-          // GK mode: zone=null saves = off-target/blocked opponent shots
-          <div className="rounded border border-gray-300 bg-gray-50 p-2 flex flex-col items-center gap-0.5 col-span-2">
-            <span className="text-[10px] text-gray-500 font-medium">Ekki á mark / Blokk</span>
-            <span className="text-[9px] text-gray-400">(framhjá, stöng, blokkaðar)</span>
-            <span className="text-lg font-bold text-gray-400 tabular-nums">{blk.shots}</span>
-            <span className="text-[9px] text-gray-400">skot</span>
-          </div>
+          <OffCell label={t({ en: 'Off target or blocked', is: 'Ekki á mark eða blokk' })} sub={t({ en: 'Wide, post and blocked', is: 'Framhjá, stöng og blokkað' })} value={blk.shots} />
         ) : (
           <>
-            <div className="rounded border border-gray-300 bg-gray-50 p-2 flex flex-col items-center gap-0.5">
-              <span className="text-[10px] text-gray-500 font-medium">Ekki á mark</span>
-              <span className="text-[9px] text-gray-400">(framhjá / stöng)</span>
-              <span className="text-lg font-bold text-gray-500 tabular-nums">{not.shots}</span>
-              <span className="text-[9px] text-gray-400">skot</span>
-            </div>
-            <div className="rounded border border-gray-300 bg-gray-50 p-2 flex flex-col items-center gap-0.5">
-              <span className="text-[10px] text-gray-500 font-medium">Blokk</span>
-              <span className="text-[9px] text-gray-400">(stöðvað af leikm.)</span>
-              <span className="text-lg font-bold text-gray-400 tabular-nums">{blk.shots}</span>
-              <span className="text-[9px] text-gray-400">skot</span>
-            </div>
+            <OffCell label={t(T.offTarget)} sub={t({ en: 'Wide or post', is: 'Framhjá eða stöng' })} value={not.shots} />
+            <OffCell label={t(T.blocked)} sub={t({ en: 'Stopped by a defender', is: 'Stöðvað af varnarmanni' })} value={blk.shots} />
           </>
         )}
-      </div>
+      </dl>
 
-      <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 justify-center">
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-green-200 border border-gray-300" />
-          <span className="text-[10px] text-gray-500">{gkMode ? '≥60% varið' : '≥60% nýting'}</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-green-100 border border-gray-300" />
-          <span className="text-[10px] text-gray-500">30–59%</span>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <div className="w-3 h-3 rounded-sm bg-orange-100 border border-gray-300" />
-          <span className="text-[10px] text-gray-500">{gkMode ? '<30% varið' : '0 mörk'}</span>
-        </div>
+      <ul className="mt-4 flex flex-wrap gap-x-4 gap-y-1.5">
+        {legend.map(x => (
+          <li key={x.l} className="flex items-center gap-1.5 text-[12px] text-muted">
+            <span className={`w-3 h-3 rounded-sm ${x.c}`} aria-hidden="true" />{x.l}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
+}
+
+function OffCell({ label, sub, value }: { label: string; sub: string; value: number }) {
+  return (
+    <div className="bg-white border border-line rounded-lg px-3 py-2.5 flex items-center justify-between gap-3">
+      <div>
+        <dt className="text-[14px]">{label}</dt>
+        <p className="text-[12px] text-muted">{sub}</p>
       </div>
+      <dd className={`text-[20px] font-semibold num ${value > 0 ? 'text-ink' : 'text-[#9aa0a8]'}`}>{value}</dd>
     </div>
   )
 }
@@ -157,6 +112,7 @@ function GoalFrame({ zoneStats, gkMode }: { zoneStats: ZoneStats; gkMode: boolea
 function AttackSummary({ shots, viewMode = 'total', matchCount = 1 }: {
   shots: Event[]; viewMode?: 'total' | 'average'; matchCount?: number
 }) {
+  const t = useT()
   const goals = shots.filter(e => e.sub_type === 'goal').length
   const onTarget = shots.filter(e => e.sub_type === 'goal' || e.sub_type === 'saved').length
   const notOnTarget = shots.filter(e => e.sub_type === 'wide' || e.sub_type === 'post').length
@@ -165,20 +121,21 @@ function AttackSummary({ shots, viewMode = 'total', matchCount = 1 }: {
   const pct = total > 0 ? Math.round(goals / total * 100) : 0
   const disp = (n: number) => viewMode === 'average' ? (matchCount > 0 ? (n / matchCount).toFixed(1) : '0') : n
   return (
-    <div className="flex flex-wrap gap-4 px-4 py-3 bg-white border-b border-gray-100 text-center">
-      <Stat label="Mörk" value={disp(goals)} color="text-green-700" />
-      <Stat label="Skot" value={disp(total)} color="text-gray-700" />
-      <Stat label="Nýting" value={`${pct}%`} color="text-gray-600" />
-      <Stat label="Á mark" value={disp(onTarget)} color="text-gray-500" />
-      <Stat label="Ekki á mark" value={disp(notOnTarget)} color="text-gray-400" />
-      <Stat label="Blokk" value={disp(blocked)} color="text-gray-300" />
-    </div>
+    <Strip>
+      <Stat label={t(T.goals)} value={disp(goals)} accent />
+      <Stat label={t(T.shots)} value={disp(total)} />
+      <Stat label={t(T.shootingPct)} value={`${pct}%`} />
+      <Stat label={t({ en: 'On target', is: 'Á mark' })} value={disp(onTarget)} />
+      <Stat label={t(T.offTarget)} value={disp(notOnTarget)} />
+      <Stat label={t(T.blocked)} value={disp(blocked)} />
+    </Strip>
   )
 }
 
 function GKSummary({ events, viewMode = 'total', matchCount = 1 }: {
   events: Event[]; viewMode?: 'total' | 'average'; matchCount?: number
 }) {
+  const t = useT()
   const shotEvents = events.filter(e => e.sub_type === 'save' || e.sub_type === 'goal_conceded' || e.sub_type === 'parry')
   const onTarget = shotEvents.filter(e => e.zone !== null && e.zone !== undefined)
   const saves = onTarget.filter(e => e.sub_type === 'save' || e.sub_type === 'parry').length
@@ -188,21 +145,25 @@ function GKSummary({ events, viewMode = 'total', matchCount = 1 }: {
   const savePct = faced > 0 ? Math.round(saves / faced * 100) : 0
   const disp = (n: number) => viewMode === 'average' ? (matchCount > 0 ? (n / matchCount).toFixed(1) : '0') : n
   return (
-    <div className="flex flex-wrap gap-4 px-4 py-3 bg-white border-b border-gray-100 text-center">
-      <Stat label="Varið" value={disp(saves)} color="text-green-700" />
-      <Stat label="Á móti" value={disp(faced)} color="text-gray-700" />
-      <Stat label="Vörn %" value={`${savePct}%`} color={savePct >= 40 ? 'text-green-600' : 'text-gray-600'} />
-      <Stat label="Móttökumörk" value={disp(conceded)} color="text-red-500" />
-      <Stat label="Ekki á mark" value={disp(offTarget)} color="text-gray-400" />
-    </div>
+    <Strip>
+      <Stat label={t(T.saves)} value={disp(saves)} accent />
+      <Stat label={t({ en: 'On target', is: 'Á mark' })} value={disp(faced)} />
+      <Stat label={t(T.savePct)} value={`${savePct}%`} />
+      <Stat label={t(T.conceded)} value={disp(conceded)} />
+      <Stat label={t(T.offTarget)} value={disp(offTarget)} />
+    </Strip>
   )
 }
 
-function Stat({ label, value, color }: { label: string; value: string | number; color: string }) {
+function Strip({ children }: { children: React.ReactNode }) {
+  return <dl className="grid grid-cols-3 sm:grid-cols-6 gap-x-6 gap-y-3 px-4 py-4 bg-white border-b border-line">{children}</dl>
+}
+
+function Stat({ label, value, accent = false }: { label: string; value: string | number; accent?: boolean }) {
   return (
-    <div>
-      <p className={`text-xl font-bold ${color}`}>{value}</p>
-      <p className="text-[10px] text-gray-500 uppercase tracking-wide">{label}</p>
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-[12px] text-muted">{label}</dt>
+      <dd className={`text-[22px] font-medium leading-tight num ${accent ? 'text-accent' : 'text-ink'}`}>{value}</dd>
     </div>
   )
 }
@@ -236,7 +197,6 @@ function computeGKZones(events: Event[]): ZoneStats {
       s.goal[e.zone].shots++
       if (e.sub_type === 'goal_conceded') s.goal[e.zone].goals++
     } else {
-      // off-target / blocked / wide / post from opponent — all go into blocked bucket
       s.blocked.shots++
     }
   }
@@ -245,19 +205,14 @@ function computeGKZones(events: Event[]): ZoneStats {
 
 // ─── Main export ──────────────────────────────────────────────────────────────
 
-export function ShotMap({
-  allEvents,
-  players,
-  trackedTeamId,
-  viewMode = 'total',
-  matchCount = 1,
-}: {
+export function ShotMap({ allEvents, players, trackedTeamId, viewMode = 'total', matchCount = 1 }: {
   allEvents: Event[]
   players: Player[]
   trackedTeamId: string
   viewMode?: 'total' | 'average'
   matchCount?: number
 }) {
+  const t = useT()
   const [mode, setMode] = useState<ShotMapMode>('attack')
   const [playerId, setPlayerId] = useState<string>('')
   const { range, setRange, filterEvents, clear } = useMinuteFilter()
@@ -286,59 +241,35 @@ export function ShotMap({
   const noData = mode === 'attack' ? attackShots.length === 0 : gkEvents.length === 0
 
   return (
-    <div className="flex flex-col bg-gray-50">
-      {/* Mode toggle */}
-      <div className="flex bg-white border-b border-gray-200">
-        <button
-          onClick={() => { setMode('attack'); setPlayerId('') }}
-          className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-colors ${mode === 'attack' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          Sókn
-        </button>
-        <button
-          onClick={() => { setMode('gk'); setPlayerId('') }}
-          className={`flex-1 py-2 text-sm font-semibold border-b-2 transition-colors ${mode === 'gk' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'}`}
-        >
-          Markvörður
-        </button>
-      </div>
-
-      {/* Filters */}
-      <div className="bg-white border-b border-gray-200">
-        <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-        <div className="flex items-center gap-3 px-4 py-2">
-          <span className="text-xs text-gray-500 font-medium whitespace-nowrap">
-            {mode === 'attack' ? 'Leikmaður:' : 'Markvörður:'}
-          </span>
-          <select
-            value={playerId}
-            onChange={e => setPlayerId(e.target.value)}
-            className="px-2 py-1 rounded border border-gray-300 text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-400"
-          >
-            <option value="">{mode === 'attack' ? 'Allir leikmenn' : 'Allir markmenn'}</option>
+    <div className="flex flex-col bg-ground">
+      <div className="flex flex-wrap items-center gap-3 px-4 py-3 bg-white border-b border-line">
+        <Segmented<ShotMapMode> value={mode} onChange={m => { setMode(m); setPlayerId('') }}
+          options={[{ v: 'attack', label: t(T.attack) }, { v: 'gk', label: t(T.goalkeeper) }]} />
+        <div className="flex items-center gap-2 min-w-0">
+          <Select value={playerId} onChange={e => setPlayerId(e.target.value)} className="!h-8 !text-[14px] max-w-[240px]"
+            aria-label={mode === 'attack' ? t(T.player) : t(T.goalkeeper)}>
+            <option value="">{mode === 'attack' ? t({ en: 'All players', is: 'Allir leikmenn' }) : t({ en: 'All goalkeepers', is: 'Allir markmenn' })}</option>
             {(mode === 'attack' ? fieldPlayers : goalkeepers).map(p => (
               <option key={p.id} value={p.id}>
                 {p.jersey_number != null ? `#${p.jersey_number} ` : ''}{p.first_name} {p.last_name}
               </option>
             ))}
-          </select>
+          </Select>
           {playerId && (
-            <button onClick={() => setPlayerId('')} className="text-xs text-blue-600 hover:underline">Hreinsa</button>
+            <button onClick={() => setPlayerId('')} className="text-[13px] text-muted hover:text-ink underline underline-offset-4">{t(T.clear)}</button>
           )}
         </div>
       </div>
+      <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
 
-      {/* Summary */}
       {mode === 'attack'
         ? <AttackSummary shots={attackShots} viewMode={viewMode} matchCount={matchCount} />
-        : <GKSummary events={gkEvents} viewMode={viewMode} matchCount={matchCount} />
-      }
+        : <GKSummary events={gkEvents} viewMode={viewMode} matchCount={matchCount} />}
 
-      {/* Goal visualization */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
         {noData ? (
-          <p className="text-center text-gray-400 text-sm py-8">
-            {mode === 'attack' ? 'Engin skot skráð' : 'Engir GK atburðir skráðir'}
+          <p className="max-w-[460px] mx-auto text-[14px] text-muted border border-dashed border-[#cfd4db] rounded-lg px-3 py-2.5">
+            {mode === 'attack' ? t({ en: 'No shots logged yet.', is: 'Engin skot skráð enn.' }) : t({ en: 'No goalkeeper events logged yet.', is: 'Engar markvörslur skráðar enn.' })}
           </p>
         ) : (
           <GoalFrame zoneStats={activeZones} gkMode={mode === 'gk'} />

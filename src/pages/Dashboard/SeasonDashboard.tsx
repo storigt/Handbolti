@@ -21,12 +21,17 @@ import { ShotMap } from '@/components/stats/ShotMap'
 import { ExportModal } from '@/components/stats/ExportModal'
 import { computeIndices } from '@/lib/stats/indices'
 import { IndexPanel } from '@/components/stats/IndexPanel'
-import { Card, Spinner } from '@/components/ui'
+import { evaluateIndices, type IndexDef } from '@/lib/stats/indexDefs'
+import { useIndexStore } from '@/store/indexStore'
+import { AppBar, Button, Card, EmptyLine, Input, Label, Select, Spinner, Tabs } from '@/components/ui'
+import { useLang, useT } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
 import { ManageTeamsList } from '@/components/team/ManageTeamsList'
 import type { Team, Player, CourtLineup } from '@/lib/db/schema'
 import { GrofTab } from './GrofTab'
+import { InsightsTab } from './InsightsTab'
 
-type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices' | 'grof' | 'players' | 'matches'
+type Tab = 'overview' | 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices' | 'grof' | 'insights' | 'players' | 'matches'
 type StatsSubTab = 'attack' | 'defense' | 'gk' | 'shotmap' | 'indices'
 type DrillSubTab = StatsSubTab | 'players'
 
@@ -38,6 +43,9 @@ interface Props {
 }
 
 export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch, onMainTeamChanged }: Props) {
+  const t = useT()
+  const lang = useLang(st => st.lang)
+  const locale = lang === 'is' ? 'is-IS' : 'en-GB'
   const queryClient = useQueryClient()
 
   const { data: myTeams = [] } = useQuery({
@@ -45,7 +53,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
     queryFn: getMyTeams,
   })
   const [focusTeamId, setFocusTeamId] = useState(mainTeam.id)
-  const trackedTeam = myTeams.find(t => t.id === focusTeamId) ?? mainTeam
+  const trackedTeam = myTeams.find(tm => tm.id === focusTeamId) ?? mainTeam
 
   const [tab, setTab] = useState<Tab>('overview')
   const [seasonId, setSeasonId] = useState<string>('')
@@ -94,7 +102,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
       void queryClient.invalidateQueries({ queryKey: ['match-summaries'] })
     },
     onError: (err) => {
-      alert(`Tókst ekki að eyða leik: ${err instanceof Error ? err.message : 'Óþekkt villa'}`)
+      alert(`${t({ en: 'Could not delete the match', is: 'Tókst ekki að eyða leik' })}: ${err instanceof Error ? err.message : t({ en: 'Unknown error', is: 'Óþekkt villa' })}`)
     },
   })
 
@@ -207,15 +215,16 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
   }
 
   const TABS: { id: Tab; label: string }[] = [
-    { id: 'overview', label: 'Yfirlit' },
-    { id: 'attack', label: 'Sókn' },
-    { id: 'defense', label: 'Vörn' },
-    { id: 'gk', label: 'Markvörður' },
-    { id: 'shotmap', label: 'Skotkort' },
-    { id: 'indices', label: 'Indexar' },
-    { id: 'grof', label: 'Gröf' },
-    { id: 'players', label: 'Leikmenn Inná' },
-    { id: 'matches', label: 'Leikir' },
+    { id: 'overview', label: t(T.overview) },
+    { id: 'attack', label: t(T.attack) },
+    { id: 'defense', label: t(T.defence) },
+    { id: 'gk', label: t(T.goalkeeper) },
+    { id: 'shotmap', label: t(T.shotMap) },
+    { id: 'indices', label: t(T.indices) },
+    { id: 'grof', label: t(T.charts) },
+    { id: 'insights', label: t({ en: 'Insight', is: 'Innsýn' }) },
+    { id: 'players', label: t({ en: 'Lineups', is: 'Leikmenn inná' }) },
+    { id: 'matches', label: t(T.matches) },
   ]
 
   // If drill-down is active, show match detail view
@@ -228,7 +237,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
     const trackedScore = isHome ? drillMatch?.home_score : drillMatch?.away_score
     const opponentScore = isHome ? drillMatch?.away_score : drillMatch?.home_score
     const date = drillMatch?.match_date
-      ? new Date(drillMatch.match_date).toLocaleDateString('is-IS', { day: 'numeric', month: 'short', year: 'numeric' })
+      ? new Date(drillMatch.match_date).toLocaleDateString(locale, { day: 'numeric', month: 'short', year: 'numeric' })
       : ''
 
     return (
@@ -240,7 +249,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
         trackedTeamId={trackedTeam.id}
         myTeamName={trackedTeam.name}
         opponentName={opponent?.name}
-        header={`vs ${opponent?.name ?? '?'}`}
+        header={`${t({ en: 'vs', is: 'gegn' })} ${opponent?.name ?? '?'}`}
         subHeader={`${date} · ${trackedScore ?? '?'}–${opponentScore ?? '?'}`}
         loading={loadingDrill}
         onBack={() => setDrillMatchId(null)}
@@ -250,63 +259,72 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
     )
   }
 
+  const filtersActive = !!(seasonId || competitionId)
+  const showChips = tab !== 'matches' && filteredMatches.length > 0
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-slate-900 text-white px-4 py-3 sm:px-6 sm:py-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex flex-wrap items-center gap-2 min-w-0">
+    <div className="min-h-svh bg-ground text-ink">
+      <AppBar title={trackedTeam.name} onBack={onNewMatch} backLabel={t({ en: 'Home', is: 'Heim' })} width="max-w-[1280px]" />
+
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-8 flex flex-col gap-4">
+        {/* Title row: the team, its actions */}
+        <div className="flex flex-wrap items-end justify-between gap-x-6 gap-y-3">
           <div className="min-w-0">
             {myTeams.length > 1 ? (
-              <select
-                value={focusTeamId}
-                onChange={e => handleFocusTeamChange(e.target.value)}
-                className="text-lg font-bold bg-slate-900 text-white border border-slate-700 rounded px-1 py-0.5 max-w-full truncate focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                {myTeams.map(team => (
-                  <option key={team.id} value={team.id}>
-                    {team.name}{team.id === mainTeam.id ? ' (aðallið)' : ''}
-                  </option>
-                ))}
-              </select>
+              <h1 className="inline-block align-middle mr-2">
+              <label>
+                <span className="sr-only">{t(T.team)}</span>
+                <select
+                  value={focusTeamId}
+                  onChange={e => handleFocusTeamChange(e.target.value)}
+                  className="text-[24px] font-semibold bg-transparent border-0 -ml-1 pl-1 pr-8 max-w-full truncate rounded-md hover:bg-[#e8eaee] focus:outline-none focus:ring-2 focus:ring-accent cursor-pointer"
+                >
+                  {myTeams.map(team => (
+                    <option key={team.id} value={team.id}>
+                      {team.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              </h1>
             ) : (
-              <h1 className="text-lg font-bold truncate">{trackedTeam.name}</h1>
+              <h1 className="text-[24px] font-semibold leading-tight truncate">{trackedTeam.name}</h1>
             )}
-            <p className="text-slate-400 text-sm">Tímabilsyfirlit</p>
+            {trackedTeam.id === mainTeam.id && myTeams.length > 1 && (
+              <span className="inline-block align-middle text-[12px] font-medium px-2 py-0.5 rounded bg-white border border-line">{t({ en: 'Main team', is: 'Aðallið' })}</span>
+            )}
+            <p className="text-[15px] text-muted mt-1 num">
+              {t({ en: 'Season dashboard', is: 'Tölur tímabilsins' })} · {activeMatches.length} {activeMatches.length === 1 ? t({ en: 'match', is: 'leikur' }) : t({ en: 'matches', is: 'leikir' })}
+            </p>
           </div>
-          <button
-            onClick={() => setShowEditTeam(true)}
-            className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
-          >
-            Breyta lið
-          </button>
-          <button
-            onClick={() => setShowManageTeams(true)}
-            className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
-          >
-            Stjórna liðum
-          </button>
-          {trackedTeam.id !== mainTeam.id && (
-            <button
-              onClick={handleSetAsMainTeam}
-              className="text-slate-400 hover:text-white text-xs px-2 py-1 rounded border border-slate-600 hover:border-slate-400 transition-colors shrink-0"
-            >
-              Gera að aðallið
+          <div className="flex flex-wrap gap-2">
+            {trackedTeam.id !== mainTeam.id && (
+              <Button variant="ghost" onClick={handleSetAsMainTeam}>{t({ en: 'Make main team', is: 'Gera að aðalliði' })}</Button>
+            )}
+            <Button variant="secondary" onClick={() => setShowEditTeam(true)}>{t({ en: 'Edit team', is: 'Breyta liði' })}</Button>
+            <Button variant="secondary" onClick={() => setShowManageTeams(true)}>{t({ en: 'Manage teams', is: 'Stjórna liðum' })}</Button>
+            <Button variant="primary" onClick={() => setShowExport(true)}>{t({ en: 'Export CSV', is: 'Sækja CSV' })}</Button>
+          </div>
+        </div>
+
+        {/* Scope: season and competition */}
+        <div className="flex flex-wrap gap-2 items-center">
+          <Select value={seasonId} aria-label={t(T.season)} className="!w-auto !h-9 !text-[14px]"
+            onChange={e => { setSeasonId(e.target.value); setCompetitionId(''); setSelectedMatchIds(new Set()) }}>
+            <option value="">{t(T.allSeasons)}</option>
+            {seasons.map(se => <option key={se.id} value={se.id}>{se.name}</option>)}
+          </Select>
+          <Select value={competitionId} aria-label={t(T.competition)} className="!w-auto !h-9 !text-[14px]"
+            onChange={e => { setCompetitionId(e.target.value); setSelectedMatchIds(new Set()) }}>
+            <option value="">{t(T.allCompetitions)}</option>
+            {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+          {filtersActive && (
+            <button type="button" onClick={() => { setSeasonId(''); setCompetitionId(''); setSelectedMatchIds(new Set()) }}
+              className="text-[14px] text-muted hover:text-ink underline underline-offset-4">
+              {t({ en: 'Clear filters', is: 'Hreinsa síu' })}
             </button>
           )}
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <button
-            onClick={() => setShowExport(true)}
-            className="px-3 py-2 bg-slate-700 text-white text-sm rounded-lg hover:bg-slate-600 font-medium"
-          >
-            ↓ CSV
-          </button>
-          <button
-            onClick={onNewMatch}
-            className="px-4 py-2 bg-slate-700 text-white text-sm rounded-lg hover:bg-slate-600 font-medium"
-          >
-            ← Heim
-          </button>
         </div>
       </div>
 
@@ -321,23 +339,24 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
       )}
 
       {showManageTeams && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
-            <div className="px-6 pt-6 pb-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="manage-h">
+          <div className="bg-ground rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.22)] w-full max-w-lg max-h-[90vh] flex flex-col overscroll-contain">
+            <div className="px-6 pt-5 pb-4 border-b border-line flex items-start justify-between gap-3 bg-white rounded-t-xl">
               <div>
-                <h2 className="text-lg font-semibold text-gray-900">Stjórna liðum</h2>
-                <p className="text-sm text-gray-500 mt-0.5">
-                  Rename, hide, or add a team. A team with match history is hidden rather than deleted — its data is kept and you can bring it back later. Your current main team can't be hidden.
+                <h2 id="manage-h" className="text-[18px] font-semibold">{t({ en: 'Manage teams', is: 'Stjórna liðum' })}</h2>
+                <p className="text-[14px] text-muted mt-1">
+                  {t({
+                    en: 'Rename, hide or add a team. A team with match history is hidden rather than deleted, so its data is kept. Your main team cannot be hidden.',
+                    is: 'Endurnefndu, feldu eða bættu við liði. Lið með leikjasögu er falið en ekki eytt, svo gögnin haldast. Aðalliðið er ekki hægt að fela.',
+                  })}
                 </p>
               </div>
-              <button
-                onClick={() => setShowManageTeams(false)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none shrink-0 ml-3"
-              >
-                ×
+              <button type="button" onClick={() => setShowManageTeams(false)} aria-label={t(T.close)}
+                className="w-8 h-8 rounded-md text-muted hover:text-ink hover:bg-[#f5f6f8] flex items-center justify-center shrink-0">
+                <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
               </button>
             </div>
-            <div className="overflow-y-auto flex-1 px-6 py-4">
+            <div className="overflow-y-auto flex-1 px-6 py-5">
               <ManageTeamsList mainTeamId={mainTeam.id} />
             </div>
           </div>
@@ -355,95 +374,51 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
         />
       )}
 
-      {/* Filters */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex flex-wrap gap-3 items-center">
-        <select
-          value={seasonId}
-          onChange={e => { setSeasonId(e.target.value); setCompetitionId(''); setSelectedMatchIds(new Set()) }}
-          className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Öll tímabil</option>
-          {seasons.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-        </select>
-        <select
-          value={competitionId}
-          onChange={e => { setCompetitionId(e.target.value); setSelectedMatchIds(new Set()) }}
-          className="px-3 py-1.5 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-        >
-          <option value="">Allar keppnir</option>
-          {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        {(seasonId || competitionId) && (
-          <button
-            onClick={() => { setSeasonId(''); setCompetitionId(''); setSelectedMatchIds(new Set()) }}
-            className="text-sm text-blue-600 hover:underline"
-          >
-            Hreinsa síu
-          </button>
+      {/* Tabs and the match filter */}
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 mt-4">
+        <Tabs<Tab> value={tab} onChange={setTab} options={TABS.map(x => ({ v: x.id, label: x.label }))} label={t({ en: 'Dashboard sections', is: 'Hlutar' })} />
+        {showChips && (
+          <div className="flex items-center gap-2 py-3 overflow-x-auto sm:flex-wrap sm:overflow-visible [scrollbar-width:thin]">
+            <span className="text-[13px] text-muted shrink-0">{t({ en: 'Matches', is: 'Leikir' })}</span>
+            {filteredMatches.map(m => {
+              const isHome = m.home_team_id === trackedTeam.id
+              const opponent = isHome ? m.away_team : m.home_team
+              const selected = selectedMatchIds.has(m.id)
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  aria-pressed={selected}
+                  onClick={() => toggleMatchChip(m.id)}
+                  className={`h-8 px-2.5 rounded-md text-[13px] whitespace-nowrap border transition-colors ${
+                    selected ? 'bg-[#111214] text-white border-[#111214]' : 'bg-white text-ink border-line hover:border-[#9aa0a8]'
+                  }`}
+                >
+                  {opponent?.name ?? '?'} <span className={`num ${selected ? 'text-white/75' : 'text-muted'}`}>{(isHome ? m.home_score : m.away_score) ?? '?'}–{(isHome ? m.away_score : m.home_score) ?? '?'}</span>
+                </button>
+              )
+            })}
+            {selectedMatchIds.size > 0 && (
+              <button type="button" onClick={() => setSelectedMatchIds(new Set())} className="text-[13px] text-muted hover:text-ink underline underline-offset-4 shrink-0">
+                {t({ en: 'Show all', is: 'Sýna alla' })}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
-      {/* Tabs */}
-      <div className="bg-white border-b border-gray-200 px-4 flex gap-1 overflow-x-auto">
-        {TABS.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-3 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              tab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Match chips — shown on stat + overview tabs */}
-      {(tab === 'overview' || tab === 'attack' || tab === 'defense' || tab === 'gk' || tab === 'shotmap' || tab === 'indices' || tab === 'grof' || tab === 'players') && filteredMatches.length > 0 && (
-        <div className="bg-white border-b border-gray-100 px-4 py-2 flex gap-2 overflow-x-auto">
-          <span className="text-xs text-gray-400 self-center shrink-0">Sía leiki:</span>
-          {filteredMatches.map(m => {
-            const isHome = m.home_team_id === trackedTeam.id
-            const opponent = isHome ? m.away_team : m.home_team
-            const selected = selectedMatchIds.has(m.id)
-            return (
-              <button
-                key={m.id}
-                onClick={() => toggleMatchChip(m.id)}
-                className={`px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap border transition-colors ${
-                  selected
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
-                }`}
-              >
-                {opponent?.name ?? '?'}
-                {' '}
-                {(isHome ? m.home_score : m.away_score) ?? '?'}–{(isHome ? m.away_score : m.home_score) ?? '?'}
-              </button>
-            )
-          })}
-          {selectedMatchIds.size > 0 && (
-            <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs text-blue-600 hover:underline self-center shrink-0">
-              Hreinsa
-            </button>
-          )}
-        </div>
-      )}
-
       {/* Content */}
-      <div className="py-4">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-4 pb-16">
         {tab === 'overview' && (
-          <div className="max-w-5xl mx-auto px-4 space-y-6">
-            <OverviewTab
-              summary={summary}
-              filteredMatches={activeMatches}
-              events={events}
-              lineups={lineups}
-              allPlayers={allPlayers}
-              trackedTeamId={trackedTeam.id}
-              loadingMatches={loadingMatches}
-            />
-          </div>
+          <OverviewTab
+            summary={summary}
+            filteredMatches={activeMatches}
+            events={events}
+            lineups={lineups}
+            allPlayers={allPlayers}
+            trackedTeamId={trackedTeam.id}
+            loadingMatches={loadingMatches}
+          />
         )}
 
         {(tab === 'attack' || tab === 'defense' || tab === 'gk') && (
@@ -473,7 +448,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
         {tab === 'indices' && (
           loadingEvents
             ? <div className="flex justify-center py-12"><Spinner /></div>
-            : <div className="max-w-2xl mx-auto">
+            : <div className="max-w-3xl">
                 <IndicesTab events={events} trackedTeamId={trackedTeam.id} hasMatches={activeMatchIds.length > 0} />
               </div>
         )}
@@ -482,8 +457,19 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
           <GrofTab
             events={events}
             players={allPlayers}
-            matches={filteredMatches}
+            matches={activeMatches}
             trackedTeamId={trackedTeam.id}
+          />
+        )}
+
+        {tab === 'insights' && (
+          <InsightsTab
+            events={events}
+            players={allPlayers}
+            lineups={lineups}
+            matches={activeMatches}
+            trackedTeamId={trackedTeam.id}
+            loading={loadingEvents || loadingPlayers}
           />
         )}
 
@@ -501,7 +487,7 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
         )}
 
         {tab === 'matches' && (
-          <div className="max-w-3xl mx-auto px-4">
+          <div className="max-w-3xl">
             <MatchesTab
               matches={filteredMatches}
               trackedTeamId={trackedTeam.id}
@@ -519,17 +505,22 @@ export function SeasonDashboard({ trackedTeam: mainTeam, onNewMatch, onEditMatch
 
 // ─── Overview tab ─────────────────────────────────────────────────────────────
 
-const INDEX_META: { key: keyof import('@/lib/stats/indices').IndexBreakdown; label: string; color: string }[] = [
-  { key: 'GIQI',   label: 'GIQI',    color: '#2563eb' },
-  { key: 'DQIdef', label: 'DQIdef',  color: '#dc2626' },
-  { key: 'DQIoff', label: 'DQIoff',  color: '#16a34a' },
-  { key: 'ELI',    label: 'ELI',     color: '#7c3aed' },
-  { key: 'FI',     label: 'FI',      color: '#d97706' },
-  { key: 'GKI',    label: 'GKI',     color: '#0891b2' },
-]
+const INDEX_COLOR = '#1f2de6'
 
-// Index over time (per 10-min window) — GKI excluded (its segment data is less reliable without per-minute GK events)
-const TIME_INDEX_META = INDEX_META.filter(m => m.key !== 'GKI') as { key: 'GIQI' | 'DQIdef' | 'DQIoff' | 'ELI' | 'FI'; label: string; color: string }[]
+/** Index values (by key) for a set of events, under the user's index definitions. */
+function indexValues(defs: IndexDef[], events: import('@/lib/db/schema').Event[], trackedTeamId: string) {
+  return evaluateIndices(defs, computeIndices(events, trackedTeamId).raw)
+}
+
+/** Visible indices, and those of them that make sense per 10 minutes (not whole-match keeper segments). */
+function useVisibleIndices(events: import('@/lib/db/schema').Event[], trackedTeamId: string) {
+  const defs = useIndexStore(s => s.defs)
+  return useMemo(() => {
+    const visible = defs.filter(d => !d.hidden)
+    const ev = indexValues(defs, events, trackedTeamId)
+    return { defs, visible, perTime: visible.filter(d => !ev.byId[d.id]?.usesSegments) }
+  }, [defs, events, trackedTeamId])
+}
 
 const MINUTE_WINDOWS = [
   { label: '0–10', from: 0, to: 10 },
@@ -557,6 +548,7 @@ function OverviewTab({
   trackedTeamId: string
   loadingMatches: boolean
 }) {
+  const t = useT()
   // Goals and shot efficiency computed from events (reliable, includes wide/post shots)
   const { ourGoals, shotEff } = useMemo(() => {
     const ourShots = events.filter(e => e.event_type === 'SHOT' && e.team_id === trackedTeamId)
@@ -567,23 +559,19 @@ function OverviewTab({
     }
   }, [events, trackedTeamId])
 
+  const { defs, visible } = useVisibleIndices(events, trackedTeamId)
+
   // Per-match index trend (chronological)
   const indexTrend = useMemo(() => {
     return [...filteredMatches].reverse().map(m => {
       const matchEvents = events.filter(e => e.match_id === m.id)
-      const idx = computeIndices(matchEvents, trackedTeamId)
+      const { values } = indexValues(defs, matchEvents, trackedTeamId)
       const opponent = m.home_team_id === trackedTeamId ? m.away_team : m.home_team
-      return {
-        name: opponent?.short_name ?? opponent?.name?.slice(0, 6) ?? '?',
-        GIQI: Math.round(idx.GIQI),
-        DQIdef: Math.round(idx.DQIdef),
-        DQIoff: Math.round(idx.DQIoff),
-        ELI: Math.round(idx.ELI),
-        FI: Math.round(idx.FI),
-        GKI: Math.round(idx.GKI),
-      }
+      const row: Record<string, string | number> = { name: opponent?.short_name ?? opponent?.name?.slice(0, 6) ?? '?' }
+      for (const d of visible) row[d.key] = Math.round(values[d.key] ?? 0)
+      return row
     })
-  }, [filteredMatches, events, trackedTeamId])
+  }, [filteredMatches, events, trackedTeamId, defs, visible])
 
   // Top player per index (based on lineup-filtered events)
   const topPlayers = useMemo(() => {
@@ -594,24 +582,23 @@ function OverviewTab({
       )
       const pe = events.filter(e => e.lineup_id != null && validLineupIds.has(e.lineup_id as string))
       if (pe.length < 5) return []   // skip players with too few data points
-      const idx = computeIndices(pe, trackedTeamId)
-      return [{ player, idx }]
+      return [{ player, ev: indexValues(defs, pe, trackedTeamId) }]
     })
     if (playerResults.length === 0) return null
-    return INDEX_META.map(({ key, label, color }) => {
-      const best = playerResults.reduce((a, b) => (idx_val(b.idx, key) > idx_val(a.idx, key) ? b : a))
-      return { key, label, color, player: best.player, value: Math.round(idx_val(best.idx, key)) }
+    return visible.flatMap(d => {
+      const ok = playerResults.filter(r => r.ev.byId[d.id]?.value != null)
+      if (ok.length === 0) return []
+      const val = (r: typeof ok[number]) => r.ev.values[d.key]
+      const best = ok.reduce((a, b) => ((d.higherIsBetter ? val(b) > val(a) : val(b) < val(a)) ? b : a))
+      return [{ key: d.key, label: d.key, player: best.player, value: Math.round(val(best)) }]
     })
-  }, [lineups, allPlayers, events, trackedTeamId])
+  }, [lineups, allPlayers, events, trackedTeamId, defs, visible])
 
   if (loadingMatches) return <div className="flex justify-center py-12"><Spinner /></div>
 
   if (summary.played === 0) {
     return (
-      <Card className="p-8 text-center text-gray-500">
-        <p className="text-lg font-medium mb-1">Engir leikir skráðir</p>
-        <p className="text-sm">Kláraðu leik til að sjá tímabilstölur hér.</p>
-      </Card>
+      <EmptyLine>{t({ en: 'No finished matches in this filter yet. Finish a match to see season numbers here.', is: 'Engir kláraðir leikir í þessari síu. Kláraðu leik til að sjá tölur tímabilsins hér.' })}</EmptyLine>
     )
   }
 
@@ -620,38 +607,31 @@ function OverviewTab({
 
   return (
     <>
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-        <SummaryCard label="Leikir" value={summary.played} />
-        <SummaryCard label="Sigrar" value={summary.wins} highlight />
-        <SummaryCard label="Tap" value={summary.losses} />
-        <SummaryCard label="Mörk á leik" value={goalsPerGame} highlight />
-        <SummaryCard label="Mörk á okkur á leik" value={concededPerGame} />
-        <SummaryCard label="Meðalskotnýting" value={`${shotEff}%`} highlight={shotEff >= 50} />
-      </div>
+      {/* Summary: one strip of figures */}
+      <dl className="bg-white border border-line rounded-lg grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-x-6 gap-y-4 p-5">
+        <SummaryCard label={t(T.matches)} value={summary.played} />
+        <SummaryCard label={t({ en: 'Won', is: 'Sigrar' })} value={summary.wins} highlight />
+        <SummaryCard label={t({ en: 'Not won', is: 'Ekki sigur' })} value={summary.losses} />
+        <SummaryCard label={t({ en: 'Goals per match', is: 'Mörk á leik' })} value={goalsPerGame} />
+        <SummaryCard label={t({ en: 'Conceded per match', is: 'Mörk á okkur á leik' })} value={concededPerGame} />
+        <SummaryCard label={t(T.shootingPct)} value={`${shotEff}%`} />
+      </dl>
 
       {/* Index trend charts */}
-      {indexTrend.length >= 2 && (
+      {indexTrend.length >= 2 && visible.length > 0 && (
         <div>
-          <h2 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">Indexar yfir tíma</h2>
+          <h2 className="text-[16px] font-medium mb-3 mt-2">{t({ en: 'Indices match by match', is: 'Vísitölur eftir leikjum' })}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {INDEX_META.map(({ key, label, color }) => (
+            {visible.map(({ key }) => (
               <Card key={key} className="p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">{label}</h3>
-                <ResponsiveContainer width="100%" height={140}>
+                <h3 className="text-[15px] font-medium mb-3">{key}</h3>
+                <ResponsiveContainer width="100%" height={150}>
                   <LineChart data={indexTrend} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="name" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
-                    <Tooltip formatter={(v) => [`${v}`, label]} />
-                    <Line
-                      type="monotone"
-                      dataKey={key as string}
-                      stroke={color}
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: color }}
-                      activeDot={{ r: 5 }}
-                    />
+                    <CartesianGrid vertical={false} stroke="#e5e5e5" />
+                    <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#5d6470' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: '#5d6470' }} domain={[0, 100]} ticks={[0, 50, 100]} axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(v) => [`${v}`, key]} contentStyle={{ borderRadius: 6, border: '1px solid #e3e6ea', fontSize: 13 }} />
+                    <Line type="linear" dataKey={key} stroke={INDEX_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
                   </LineChart>
                 </ResponsiveContainer>
               </Card>
@@ -663,21 +643,16 @@ function OverviewTab({
       {/* Top player per index */}
       {topPlayers && (
         <div>
-          <h2 className="font-semibold text-gray-700 mb-3 text-sm uppercase tracking-wide">Besti leikmaður á velli — per index</h2>
+          <h2 className="text-[16px] font-medium mb-3 mt-2">{t({ en: 'Best player on court, per index', is: 'Besti leikmaður á velli, eftir vísitölu' })}</h2>
           <Card className="overflow-hidden">
-            <div className="divide-y divide-gray-100">
-              {topPlayers.map(({ label, color, player, value }) => (
-                <div key={label} className="flex items-center px-4 py-3 gap-3">
-                  <span
-                    className="text-xs font-bold px-2 py-0.5 rounded text-white shrink-0 w-16 text-center"
-                    style={{ backgroundColor: color }}
-                  >
-                    {label}
+            <div className="divide-y divide-[#eef0f2]">
+              {topPlayers.map(({ label, player, value }) => (
+                <div key={label} className="flex items-center px-4 min-h-[48px] gap-3">
+                  <span className="text-[13px] font-medium w-16 shrink-0 text-muted">{label}</span>
+                  <span className="flex-1 text-[15px]">
+                    <span className="text-muted num inline-block min-w-[28px]">{player.jersey_number ?? ''}</span>{player.first_name} {player.last_name}
                   </span>
-                  <span className="flex-1 text-sm font-medium text-gray-800">
-                    {player.first_name} {player.last_name}
-                  </span>
-                  <span className="text-sm font-bold text-gray-600 tabular-nums">{value}</span>
+                  <span className="text-[15px] font-semibold num">{value}</span>
                 </div>
               ))}
             </div>
@@ -688,16 +663,12 @@ function OverviewTab({
   )
 }
 
-function idx_val(idx: import('@/lib/stats/indices').IndexBreakdown, key: keyof import('@/lib/stats/indices').IndexBreakdown): number {
-  return idx[key] as number
-}
-
 function SummaryCard({ label, value, highlight = false }: { label: string; value: string | number; highlight?: boolean }) {
   return (
-    <Card className={`p-4 text-center ${highlight ? 'bg-blue-50 border-blue-100' : ''}`}>
-      <p className={`text-2xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-900'}`}>{value}</p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-    </Card>
+    <div className="flex flex-col gap-0.5">
+      <dt className="text-[13px] text-muted">{label}</dt>
+      <dd className={`text-[26px] font-medium leading-tight num ${highlight ? 'text-accent' : ''}`}>{value}</dd>
+    </div>
   )
 }
 
@@ -716,6 +687,7 @@ function StatsTab({
   hasMatches: boolean
   matchCount: number
 }) {
+  const t = useT()
   const [viewMode, setViewMode] = useState<'total' | 'average'>('total')
   const { range, setRange, filterEvents, clear } = useMinuteFilter()
   const filtered = useMemo(() => filterEvents(events), [events, range]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -749,43 +721,41 @@ function StatsTab({
   ), [filtered, trackedTeamId])
 
   if (!hasMatches) {
-    return (
-      <div className="max-w-3xl mx-auto px-4">
-        <Card className="p-8 text-center text-gray-500">Engir leikir í þessari síu.</Card>
-      </div>
-    )
+    return <EmptyLine>{t({ en: 'No matches in this filter.', is: 'Engir leikir í þessari síu.' })}</EmptyLine>
   }
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>
 
   return (
-    <div className="space-y-0">
-      <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-      <div className="flex items-center justify-end px-4 py-2 bg-white border-b border-gray-100">
-        <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+    <div className="space-y-4">
+      <div className="bg-white border border-line rounded-lg overflow-hidden">
+        <div className="flex flex-wrap items-center justify-between gap-2 pr-4 border-b border-line">
+          <div className="flex-1 min-w-0 [&>div]:border-b-0"><MinuteFilterBar range={range} setRange={setRange} onClear={clear} /></div>
+          <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+        </div>
+        <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={t({ en: 'Opponents', is: 'Andstæðingar' })} />
       </div>
-      <div className="overflow-x-auto px-2 pt-3 space-y-3">
-        <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName="Andstæðingar" />
+      <div className="bg-white border border-line rounded-lg overflow-hidden">
         {tab === 'attack' && <AttackTable rows={attackRows} matchCount={matchCount} viewMode={viewMode} />}
         {tab === 'defense' && <DefenseTable rows={defenseRows} matchCount={matchCount} viewMode={viewMode} />}
         {tab === 'gk' && <GKTable rows={gkRows} matchCount={matchCount} viewMode={viewMode} />}
+      </div>
 
         {tab === 'attack' && (
           <>
-            <OriginDirectionTable title="Skot — uppruni & átt" rows={shotOriginRows} successLabel="Mörk" />
-            <OriginDirectionTable title="Tapaðir boltar — uppruni & átt" rows={turnoverOriginRows} />
+            <OriginDirectionTable title={t({ en: 'Shots by origin and direction', is: 'Skot eftir uppruna og átt' })} rows={shotOriginRows} successLabel={t(T.goals)} />
+            <OriginDirectionTable title={t({ en: 'Turnovers by origin and direction', is: 'Tapaðir boltar eftir uppruna og átt' })} rows={turnoverOriginRows} />
           </>
         )}
         {tab === 'defense' && (
           <>
-            <OriginDirectionTable title="Brot — uppruni & átt" rows={foulOriginRows} />
-            <OriginDirectionTable title="Vörn — annað — uppruni & átt" rows={defActionOriginRows} />
+            <OriginDirectionTable title={t({ en: 'Fouls by origin and direction', is: 'Brot eftir uppruna og átt' })} rows={foulOriginRows} />
+            <OriginDirectionTable title={t({ en: 'Other defence by origin and direction', is: 'Önnur varnaratvik eftir uppruna og átt' })} rows={defActionOriginRows} />
           </>
         )}
         {tab === 'gk' && (
-          <OriginDirectionTable title="Skot á markmann — uppruni & átt" rows={gkOriginRows} successLabel="Varið" />
+          <OriginDirectionTable title={t({ en: 'Shots on the keeper by origin and direction', is: 'Skot á markmann eftir uppruna og átt' })} rows={gkOriginRows} successLabel={t(T.saves)} />
         )}
-      </div>
     </div>
   )
 }
@@ -804,8 +774,8 @@ function ShotMapTab({
   const [viewMode, setViewMode] = useState<'total' | 'average'>('total')
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>
   return (
-    <div>
-      <div className="flex items-center justify-end px-4 py-2 bg-white border-b border-gray-100">
+    <div className="bg-white border border-line rounded-lg overflow-hidden">
+      <div className="flex items-center justify-end px-4 py-2.5 border-b border-line">
         <ViewModeToggle mode={viewMode} onChange={setViewMode} />
       </div>
       <ShotMap allEvents={events} players={players} trackedTeamId={trackedTeamId} viewMode={viewMode} matchCount={matchCount} />
@@ -822,10 +792,13 @@ function IndicesTab({
   trackedTeamId: string
   hasMatches: boolean
 }) {
+  const t = useT()
   const { range, setRange, filterEvents, clear } = useMinuteFilter()
   const filtered = useMemo(() => filterEvents(events), [events, range]) // eslint-disable-line react-hooks/exhaustive-deps
   const indices = useMemo(() => computeIndices(filtered, trackedTeamId), [filtered, trackedTeamId])
   const minuteFiltered = range.from !== null || range.to !== null
+
+  const { defs, perTime } = useVisibleIndices(events, trackedTeamId)
 
   // Per-10-minute trend — always uses raw events (not minute-filtered), ignores events without match_minute
   const minuteTrend = useMemo(() => {
@@ -834,56 +807,46 @@ function IndicesTab({
         const m = e.match_minute
         return m != null && m >= from && m < to
       })
+      const row: Record<string, string | number | null> = { label }
       if (windowEvents.length === 0) {
-        return { label, GIQI: null, DQIdef: null, DQIoff: null, ELI: null, FI: null }
+        for (const d of perTime) row[d.key] = null
+        return row
       }
-      const idx = computeIndices(windowEvents, trackedTeamId)
-      return {
-        label,
-        GIQI: Math.round(idx.GIQI),
-        DQIdef: Math.round(idx.DQIdef),
-        DQIoff: Math.round(idx.DQIoff),
-        ELI: Math.round(idx.ELI),
-        FI: Math.round(idx.FI),
-      }
+      const { values } = indexValues(defs, windowEvents, trackedTeamId)
+      for (const d of perTime) row[d.key] = Math.round(values[d.key] ?? 0)
+      return row
     })
-  }, [events, trackedTeamId])
+  }, [events, trackedTeamId, defs, perTime])
 
   const hasMinuteTrend = minuteTrend.some(d =>
-    TIME_INDEX_META.some(m => d[m.key] !== null)
+    perTime.some(m => d[m.key] !== null)
   )
 
   if (!hasMatches) {
-    return <Card className="p-8 text-center text-gray-500">Engir leikir í þessari síu.</Card>
+    return <EmptyLine>{t({ en: 'No matches in this filter.', is: 'Engir leikir í þessari síu.' })}</EmptyLine>
   }
 
   return (
     <>
-      <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-      <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
+      <div className="bg-white border border-line rounded-lg overflow-hidden">
+        <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
+        <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
+      </div>
 
       {hasMinuteTrend && (
-        <div className="max-w-5xl mx-auto px-4 py-6 space-y-4">
-          <h2 className="font-semibold text-gray-700 text-sm uppercase tracking-wide">Indexar eftir leiktíma</h2>
+        <div className="py-6 space-y-4">
+          <h2 className="text-[16px] font-medium">{t({ en: 'Indices by match time', is: 'Vísitölur eftir leiktíma' })}</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {TIME_INDEX_META.map(({ key, label, color }) => (
+            {perTime.map(({ key }) => (
               <Card key={key} className="p-4">
-                <h3 className="text-sm font-semibold text-gray-700 mb-3">{label} — per 10 mín</h3>
+                <h3 className="text-[15px] font-medium mb-3">{key} <span className="text-muted font-normal">· {t({ en: 'per 10 min', is: 'á 10 mín' })}</span></h3>
                 <ResponsiveContainer width="100%" height={140}>
                   <LineChart data={minuteTrend} margin={{ top: 4, right: 8, left: -24, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                    <XAxis dataKey="label" tick={{ fontSize: 10 }} />
-                    <YAxis tick={{ fontSize: 10 }} domain={[0, 100]} />
-                    <Tooltip formatter={(v) => [`${v}`, label]} />
-                    <Line
-                      type="monotone"
-                      dataKey={key}
-                      stroke={color}
-                      strokeWidth={2}
-                      dot={{ r: 3, fill: color }}
-                      activeDot={{ r: 5 }}
-                      connectNulls={false}
-                    />
+                    <CartesianGrid vertical={false} stroke="#e5e5e5" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#5d6470' }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: '#5d6470' }} domain={[0, 100]} ticks={[0, 50, 100]} axisLine={false} tickLine={false} />
+                    <Tooltip formatter={(v) => [`${v}`, key]} contentStyle={{ borderRadius: 6, border: '1px solid #e3e6ea', fontSize: 13 }} />
+                    <Line type="linear" dataKey={key} stroke={INDEX_COLOR} strokeWidth={2} dot={false} activeDot={{ r: 4 }} connectNulls={false} />
                   </LineChart>
                 </ResponsiveContainer>
               </Card>
@@ -912,19 +875,19 @@ function MatchesTab({
   onDeleteMatch: (matchId: string) => void
   deletingMatchId: string | null
 }) {
+  const t = useT()
+  const lang = useLang(st => st.lang)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
   if (matches.length === 0) {
-    return (
-      <Card className="p-8 text-center text-gray-500">
-        Engir leikir skráðir.
-      </Card>
-    )
+    return <EmptyLine>{t({ en: 'No finished matches yet.', is: 'Engir kláraðir leikir enn.' })}</EmptyLine>
   }
+
+  const small = 'h-8 px-2.5 rounded-md text-[13px] font-medium transition-colors shrink-0 disabled:opacity-50'
 
   return (
     <Card className="overflow-hidden">
-      <div className="divide-y divide-gray-100">
+      <ul>
         {matches.map(m => {
           const isHome = m.home_team_id === trackedTeamId
           const trackedScore = isHome ? m.home_score : m.away_score
@@ -933,65 +896,44 @@ function MatchesTab({
           const won = (trackedScore ?? 0) > (opponentScore ?? 0)
           const lost = (trackedScore ?? 0) < (opponentScore ?? 0)
           const date = m.match_date
-            ? new Date(m.match_date).toLocaleDateString('is-IS', { day: 'numeric', month: 'short', year: 'numeric' })
-            : 'Óþekkt dagsetning'
+            ? new Date(m.match_date).toLocaleDateString(lang === 'is' ? 'is-IS' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+            : t({ en: 'No date', is: 'Engin dagsetning' })
           const isDeleting = deletingMatchId === m.id
           const isConfirming = confirmDeleteId === m.id
+          const resultWord = won ? t({ en: 'Win', is: 'Sigur' }) : lost ? t({ en: 'Loss', is: 'Tap' }) : t({ en: 'Draw', is: 'Jafntefli' })
 
           return (
-            <div key={m.id} className="flex items-center px-4 py-3 gap-2 hover:bg-gray-50 transition-colors">
-              <button
-                onClick={() => onDrillDown(m.id)}
-                className="flex items-center gap-3 flex-1 text-left min-w-0"
-              >
-                <div className={`w-2 h-2 rounded-full flex-shrink-0 ${won ? 'bg-green-500' : lost ? 'bg-red-400' : 'bg-gray-300'}`} />
+            <li key={m.id} className="flex items-center px-4 min-h-[64px] py-2 gap-2 border-t border-[#eef0f2] first:border-t-0 hover:bg-[#f8f9fa] transition-colors">
+              <button type="button" onClick={() => onDrillDown(m.id)} className="flex items-center gap-3 flex-1 text-left min-w-0">
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-sm truncate">vs {opponent?.name ?? '?'}</p>
-                  <p className="text-xs text-gray-500">{date} · {isHome ? 'Heima' : 'Útleikur'}{m.competition ? ` · ${m.competition.name}` : ''}</p>
+                  <p className="text-[15px] font-medium truncate">{t({ en: 'vs', is: 'gegn' })} {opponent?.name ?? '?'}</p>
+                  <p className="text-[13px] text-muted truncate">{date} · {isHome ? t(T.home) : t(T.away)}{m.competition ? ` · ${m.competition.name}` : ''}</p>
                 </div>
                 <div className="text-right shrink-0">
-                  <p className={`text-lg font-bold tabular-nums ${won ? 'text-green-700' : lost ? 'text-red-600' : 'text-gray-700'}`}>
-                    {trackedScore ?? '?'} – {opponentScore ?? '?'}
-                  </p>
-                  <p className={`text-xs font-medium ${won ? 'text-green-600' : lost ? 'text-red-500' : 'text-gray-400'}`}>
-                    {won ? 'S' : lost ? 'T' : 'J'} · Sjá tölur →
-                  </p>
+                  <p className={`text-[18px] font-semibold num ${won ? 'text-accent' : ''}`}>{trackedScore ?? '?'}–{opponentScore ?? '?'}</p>
+                  <p className="text-[12px] text-muted">{resultWord}</p>
                 </div>
               </button>
-              <button
-                onClick={() => onEditMatch(m.id)}
-                className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-500 hover:border-blue-400 hover:text-blue-600 transition-colors"
-              >
-                Breyta
+              <button type="button" onClick={() => onEditMatch(m.id)} className={`${small} text-muted hover:text-ink hover:bg-[#eef0f3]`}>
+                {t({ en: 'Edit', is: 'Breyta' })}
               </button>
               {isConfirming ? (
-                <div className="flex gap-1 shrink-0">
-                  <button
-                    onClick={() => { onDeleteMatch(m.id); setConfirmDeleteId(null) }}
-                    disabled={isDeleting}
-                    className="px-2.5 py-1.5 text-xs font-medium rounded-lg bg-red-600 text-white hover:bg-red-700 disabled:opacity-50 transition-colors"
-                  >
-                    {isDeleting ? '…' : 'Eyða?'}
+                <div className="flex items-center gap-1 shrink-0">
+                  <button type="button" onClick={() => { onDeleteMatch(m.id); setConfirmDeleteId(null) }} disabled={isDeleting}
+                    className={`${small} bg-[#c4242a] text-white`}>
+                    {isDeleting ? '…' : t({ en: 'Delete match', is: 'Eyða leik' })}
                   </button>
-                  <button
-                    onClick={() => setConfirmDeleteId(null)}
-                    className="px-2 py-1.5 text-xs text-gray-400 hover:text-gray-600"
-                  >
-                    Hætta við
-                  </button>
+                  <button type="button" onClick={() => setConfirmDeleteId(null)} className={`${small} text-muted hover:text-ink`}>{t(T.cancel)}</button>
                 </div>
               ) : (
-                <button
-                  onClick={() => setConfirmDeleteId(m.id)}
-                  className="shrink-0 px-2.5 py-1.5 text-xs font-medium rounded-lg border border-gray-200 text-gray-400 hover:border-red-300 hover:text-red-500 transition-colors"
-                >
-                  Eyða
+                <button type="button" onClick={() => setConfirmDeleteId(m.id)} className={`${small} text-muted hover:text-[#c4242a] hover:bg-[#ffedea]`}>
+                  {t(T.delete)}
                 </button>
               )}
-            </div>
+            </li>
           )
         })}
-      </div>
+      </ul>
     </Card>
   )
 }
@@ -1024,65 +966,63 @@ function DrillDownView({
   const indices = useMemo(() => computeIndices(filtered, trackedTeamId), [filtered, trackedTeamId])
   const minuteFiltered = range.from !== null || range.to !== null
 
+  const t = useT()
   const DRILL_TABS: { id: DrillSubTab; label: string }[] = [
-    { id: 'attack', label: 'Sókn' },
-    { id: 'defense', label: 'Vörn' },
-    { id: 'gk', label: 'Markvörður' },
-    { id: 'shotmap', label: 'Skotkort' },
-    { id: 'indices', label: 'Indexar' },
-    { id: 'players', label: 'Leikmenn Inná' },
+    { id: 'attack', label: t(T.attack) },
+    { id: 'defense', label: t(T.defence) },
+    { id: 'gk', label: t(T.goalkeeper) },
+    { id: 'shotmap', label: t(T.shotMap) },
+    { id: 'indices', label: t(T.indices) },
+    { id: 'players', label: t({ en: 'Lineups', is: 'Leikmenn inná' }) },
   ]
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-slate-900 text-white px-4 py-3 flex items-center gap-3">
-        <button onClick={onBack} className="text-slate-400 hover:text-white text-lg">←</button>
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">{header}</p>
-          <p className="text-slate-400 text-xs">{subHeader}</p>
+    <div className="min-h-svh bg-ground text-ink">
+      <AppBar title={header} onBack={onBack} backLabel={t({ en: 'Season', is: 'Tímabil' })} width="max-w-[1280px]" />
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 pt-8 flex flex-col gap-4">
+        <div>
+          <h1 className="text-[24px] font-semibold leading-tight">{header}</h1>
+          <p className="text-[15px] text-muted mt-1 num">{subHeader}</p>
         </div>
+        <Tabs<DrillSubTab> value={subTab} onChange={setSubTab} options={DRILL_TABS.map(x => ({ v: x.id, label: x.label }))} />
       </div>
-      <div className="flex border-b border-gray-200 bg-white overflow-x-auto">
-        {DRILL_TABS.map(t => (
-          <button key={t.id} onClick={() => setSubTab(t.id)}
-            className={`flex-1 py-2.5 text-sm font-semibold border-b-2 transition-colors whitespace-nowrap px-3 ${subTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {loading ? (
-        <div className="flex justify-center py-12"><Spinner /></div>
-      ) : subTab === 'players' ? (
-        <PlayersOnTab
-          allPlayers={allPlayers}
-          events={events}
-          lineups={lineups}
-          goalkeepers={goalkeepers}
-          trackedTeamId={trackedTeamId}
-          myTeamName={myTeamName}
-          loading={false}
-          hasMatches={events.length > 0}
-        />
-      ) : subTab === 'shotmap' ? (
-        <ShotMap allEvents={events} players={allPlayers} trackedTeamId={trackedTeamId} />
-      ) : subTab === 'indices' ? (
-        <div className="max-w-2xl mx-auto">
-          <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-          <div className="px-4 py-2">
+      <div className="max-w-[1280px] mx-auto px-4 sm:px-6 py-4 pb-16">
+        {loading ? (
+          <div className="flex justify-center py-12"><Spinner /></div>
+        ) : subTab === 'players' ? (
+          <PlayersOnTab
+            allPlayers={allPlayers}
+            events={events}
+            lineups={lineups}
+            goalkeepers={goalkeepers}
+            trackedTeamId={trackedTeamId}
+            myTeamName={myTeamName}
+            loading={false}
+            hasMatches={events.length > 0}
+          />
+        ) : subTab === 'shotmap' ? (
+          <div className="bg-white border border-line rounded-lg overflow-hidden">
+            <ShotMap allEvents={events} players={allPlayers} trackedTeamId={trackedTeamId} />
+          </div>
+        ) : subTab === 'indices' ? (
+          <div className="max-w-3xl bg-white border border-line rounded-lg overflow-hidden">
+            <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
             <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
           </div>
-        </div>
-      ) : (
-        <div className="space-y-0">
-          <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-          <div className="overflow-x-auto px-2 pt-3 space-y-3">
-            <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={opponentName} />
-            {subTab === 'attack' && <AttackTable rows={attackRows} />}
-            {subTab === 'defense' && <DefenseTable rows={defenseRows} />}
-            {subTab === 'gk' && <GKTable rows={gkRows} />}
+        ) : (
+          <div className="space-y-4">
+            <div className="bg-white border border-line rounded-lg overflow-hidden">
+              <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
+              <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={opponentName} />
+            </div>
+            <div className="bg-white border border-line rounded-lg overflow-hidden">
+              {subTab === 'attack' && <AttackTable rows={attackRows} />}
+              {subTab === 'defense' && <DefenseTable rows={defenseRows} />}
+              {subTab === 'gk' && <GKTable rows={gkRows} />}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   )
 }
@@ -1101,6 +1041,7 @@ function PlayersOnTab({
   loading: boolean
   hasMatches: boolean
 }) {
+  const t = useT()
   const [selectedPlayerIds, setSelectedPlayerIds] = useState<string[]>([])
   const [subTab, setSubTab] = useState<StatsSubTab>('attack')
   const [viewMode, setViewMode] = useState<'total' | 'average'>('total')
@@ -1135,144 +1076,95 @@ function PlayersOnTab({
   )
 
   const SUB_TABS: { id: StatsSubTab; label: string }[] = [
-    { id: 'attack', label: 'Sókn' },
-    { id: 'defense', label: 'Vörn' },
-    { id: 'gk', label: 'Markvörður' },
-    { id: 'shotmap', label: 'Skotkort' },
-    { id: 'indices', label: 'Indexar' },
+    { id: 'attack', label: t(T.attack) },
+    { id: 'defense', label: t(T.defence) },
+    { id: 'gk', label: t(T.goalkeeper) },
+    { id: 'shotmap', label: t(T.shotMap) },
+    { id: 'indices', label: t(T.indices) },
   ]
 
   const gks = allPlayers.filter(p => p.position === 'goalkeeper')
   const fields = allPlayers.filter(p => p.position === 'field')
 
   if (!hasMatches) {
-    return (
-      <div className="max-w-3xl mx-auto px-4">
-        <Card className="p-8 text-center text-gray-500">Engir leikir í þessari síu.</Card>
-      </div>
-    )
+    return <EmptyLine>{t({ en: 'No matches in this filter.', is: 'Engir leikir í þessari síu.' })}</EmptyLine>
   }
 
   if (loading) return <div className="flex justify-center py-12"><Spinner /></div>
 
+  const chip = (p: Player, gk: boolean) => {
+    const selected = selectedPlayerIds.includes(p.id)
+    return (
+      <button key={p.id} type="button" aria-pressed={selected} onClick={() => togglePlayer(p.id)}
+        className={`h-9 flex items-center gap-1.5 px-3 rounded-md text-[14px] border transition-colors ${
+          selected ? 'bg-[#111214] text-white border-[#111214]' : 'bg-white text-ink border-line hover:border-[#9aa0a8]'
+        }`}>
+        {p.jersey_number != null && <span className={`num ${selected ? 'text-white/75' : 'text-muted'}`}>{p.jersey_number}</span>}
+        {p.last_name}
+        {gk && <span className={`text-[12px] ${selected ? 'text-white/75' : 'text-muted'}`}>{t({ en: 'GK', is: 'MM' })}</span>}
+      </button>
+    )
+  }
+
   return (
-    <div className="max-w-3xl mx-auto px-4 py-4 space-y-4">
-      {/* Player picker */}
-      <Card className="p-4">
-        <div className="flex items-center justify-between mb-3">
-          <p className="text-sm font-medium text-gray-700">Veldu leikmenn:</p>
+    <div className="space-y-4">
+      <Card className="p-5">
+        <div className="flex items-baseline justify-between mb-1">
+          <h2 className="text-[16px] font-medium">{t({ en: 'Who is on court?', is: 'Hverjir eru inná?' })}</h2>
           {selectedPlayerIds.length > 0 && (
-            <button
-              onClick={() => setSelectedPlayerIds([])}
-              className="text-xs text-blue-600 hover:underline"
-            >
-              Hreinsa val
+            <button type="button" onClick={() => setSelectedPlayerIds([])} className="text-[13px] text-muted hover:text-ink underline underline-offset-4">
+              {t({ en: 'Clear', is: 'Hreinsa val' })}
             </button>
           )}
         </div>
+        <p className="text-[14px] text-muted mb-4">{t({ en: 'Pick players to see the numbers only while all of them were on court together.', is: 'Veldu leikmenn til að sjá tölurnar aðeins þegar allir voru inná samtímis.' })}</p>
         <div className="space-y-2">
-          {gks.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {gks.map(p => {
-                const selected = selectedPlayerIds.includes(p.id)
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => togglePlayer(p.id)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium border transition-colors ${
-                      selected
-                        ? 'bg-blue-600 text-white border-blue-600'
-                        : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                    }`}
-                  >
-                    <span className="text-xs bg-purple-100 text-purple-700 px-1 rounded font-semibold">GK</span>
-                    {p.jersey_number != null ? `#${p.jersey_number} ` : ''}{p.last_name}
-                  </button>
-                )
-              })}
-            </div>
-          )}
-          <div className="flex flex-wrap gap-2">
-            {fields.map(p => {
-              const selected = selectedPlayerIds.includes(p.id)
-              return (
-                <button
-                  key={p.id}
-                  onClick={() => togglePlayer(p.id)}
-                  className={`px-2.5 py-1 rounded-full text-sm font-medium border transition-colors ${
-                    selected
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-blue-400'
-                  }`}
-                >
-                  {p.jersey_number != null ? `#${p.jersey_number} ` : ''}{p.last_name}
-                </button>
-              )
-            })}
-          </div>
+          {gks.length > 0 && <div className="flex flex-wrap gap-2">{gks.map(p => chip(p, true))}</div>}
+          <div className="flex flex-wrap gap-2">{fields.map(p => chip(p, false))}</div>
         </div>
       </Card>
 
-      {/* No players selected */}
       {selectedPlayerIds.length === 0 && (
-        <Card className="p-8 text-center text-gray-400">
-          <p className="font-medium mb-1">Enginn leikmaður valinn</p>
-          <p className="text-sm">Veldu leikmann til að sjá tölfræði þegar hann er á velli.</p>
-        </Card>
+        <EmptyLine>{t({ en: 'No players picked yet.', is: 'Enginn leikmaður valinn.' })}</EmptyLine>
       )}
 
-      {/* Players selected but no matching events */}
       {selectedPlayerIds.length > 0 && playerFilteredEvents.length === 0 && (
-        <Card className="p-8 text-center text-gray-400">
-          <p className="font-medium mb-1">Engar tölur fundust</p>
-          <p className="text-sm">Engar skráðar aðgerðir þegar þessir leikmenn eru allir á velli samtímis.</p>
-        </Card>
+        <EmptyLine>{t({ en: 'Nothing was logged while all of these players were on court together.', is: 'Ekkert var skráð á meðan allir þessir leikmenn voru inná samtímis.' })}</EmptyLine>
       )}
 
-      {/* Stats */}
       {selectedPlayerIds.length > 0 && playerFilteredEvents.length > 0 && (
-        <>
-          <div className="flex border-b border-gray-200 bg-white rounded-t-xl overflow-x-auto -mx-0">
-            {SUB_TABS.map(t => (
-              <button
-                key={t.id}
-                onClick={() => setSubTab(t.id)}
-                className={`flex-1 py-2.5 text-sm font-medium border-b-2 transition-colors whitespace-nowrap px-3 ${
-                  subTab === t.id ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
+        <div className="space-y-4">
+          <Tabs<StatsSubTab> value={subTab} onChange={setSubTab} options={SUB_TABS.map(x => ({ v: x.id, label: x.label }))} />
 
           {subTab === 'shotmap' ? (
-            <div>
-              <div className="flex items-center justify-end px-4 py-2 bg-white border-b border-gray-100">
+            <div className="bg-white border border-line rounded-lg overflow-hidden">
+              <div className="flex items-center justify-end px-4 py-2.5 border-b border-line">
                 <ViewModeToggle mode={viewMode} onChange={setViewMode} />
               </div>
               <ShotMap allEvents={playerFilteredEvents} players={allPlayers} trackedTeamId={trackedTeamId} viewMode={viewMode} matchCount={playerMatchCount} />
             </div>
           ) : subTab === 'indices' ? (
-            <>
+            <div className="bg-white border border-line rounded-lg overflow-hidden">
               <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
               <IndexPanel breakdown={indices} minuteFiltered={minuteFiltered} />
-            </>
+            </div>
           ) : (
             <>
-              <MinuteFilterBar range={range} setRange={setRange} onClear={clear} />
-              <div className="flex items-center justify-end px-4 py-2 bg-white border-b border-gray-100">
-                <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+              <div className="bg-white border border-line rounded-lg overflow-hidden">
+                <div className="flex flex-wrap items-center justify-between gap-2 pr-4 border-b border-line">
+                  <div className="flex-1 min-w-0 [&>div]:border-b-0"><MinuteFilterBar range={range} setRange={setRange} onClear={clear} /></div>
+                  <ViewModeToggle mode={viewMode} onChange={setViewMode} />
+                </div>
+                <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName={t({ en: 'Opponents', is: 'Andstæðingar' })} />
               </div>
-              <div className="overflow-x-auto space-y-3">
-                <TeamStatsTable events={filtered} trackedTeamId={trackedTeamId} myTeamName={myTeamName} opponentTeamName="Andstæðingar" />
+              <div className="bg-white border border-line rounded-lg overflow-hidden">
                 {subTab === 'attack' && <AttackTable rows={attackRows} matchCount={playerMatchCount} viewMode={viewMode} />}
                 {subTab === 'defense' && <DefenseTable rows={defenseRows} matchCount={playerMatchCount} viewMode={viewMode} />}
                 {subTab === 'gk' && <GKTable rows={gkRows} matchCount={playerMatchCount} viewMode={viewMode} />}
               </div>
             </>
           )}
-        </>
+        </div>
       )}
     </div>
   )
@@ -1367,129 +1259,99 @@ function EditTeamModal({
       await queryClient.invalidateQueries({ queryKey: ['players', team.id] })
       await queryClient.invalidateQueries({ queryKey: ['players-all', team.id] })
     } catch (e) {
-      setPlayerError(e instanceof Error ? e.message : 'Villa við að vista leikmenn')
+      setPlayerError(e instanceof Error ? e.message : t({ en: 'Could not save the players.', is: 'Villa við að vista leikmenn.' }))
     } finally {
       setSavingPlayers(false)
     }
   }
 
-  const inputCls = 'w-full px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500'
+  const t = useT()
+  const colHead = 'text-[12px] text-muted px-1'
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
-          <h2 className="text-lg font-semibold text-gray-900">Breyta liði</h2>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true" aria-labelledby="edit-team-h">
+      <div className="bg-white rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.22)] w-full max-w-2xl max-h-[90vh] flex flex-col overscroll-contain">
+        <div className="px-6 pt-5 pb-4 border-b border-line flex items-center justify-between">
+          <h2 id="edit-team-h" className="text-[18px] font-semibold">{t({ en: 'Edit team', is: 'Breyta liði' })}</h2>
+          <button type="button" onClick={onClose} aria-label={t(T.close)} className="w-8 h-8 rounded-md text-muted hover:text-ink hover:bg-[#f5f6f8] flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+          </button>
         </div>
 
-        <div className="overflow-y-auto flex-1 px-6 py-4 space-y-6">
-          {/* Team details */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Liðsupplýsingar</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="col-span-2">
-                <label className="block text-xs font-medium text-gray-600 mb-1">Nafn liðs *</label>
-                <input value={name} onChange={e => setName(e.target.value)} className={inputCls} />
+        <div className="overflow-y-auto flex-1 px-6 py-5 space-y-8">
+          <section className="space-y-4">
+            <h3 className="text-[16px] font-medium">{t({ en: 'Team details', is: 'Upplýsingar um lið' })}</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label htmlFor="et-name">{t({ en: 'Team name', is: 'Nafn liðs' })}</Label>
+                <Input id="et-name" value={name} onChange={e => setName(e.target.value)} autoComplete="off" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Skammstöfun</label>
-                <input value={shortName} onChange={e => setShortName(e.target.value)} maxLength={6} className={inputCls} />
+                <Label htmlFor="et-short">{t({ en: 'Short name', is: 'Skammstöfun' })}</Label>
+                <Input id="et-short" value={shortName} onChange={e => setShortName(e.target.value)} maxLength={6} autoComplete="off" />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-600 mb-1">Heimavöllur</label>
-                <input value={homeVenue} onChange={e => setHomeVenue(e.target.value)} placeholder="t.d. Laugardalshöll" className={inputCls} />
+                <Label htmlFor="et-venue">{t({ en: 'Home venue', is: 'Heimavöllur' })}</Label>
+                <Input id="et-venue" value={homeVenue} onChange={e => setHomeVenue(e.target.value)} autoComplete="off"
+                  placeholder={t({ en: 'e.g. Laugardalshöll', is: 't.d. Laugardalshöll' })} />
               </div>
             </div>
-            {error && <p className="text-xs text-red-600">{error}</p>}
-            <button
-              onClick={() => onSave({ name, short_name: shortName, home_venue: homeVenue })}
-              disabled={!name.trim() || saving}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-500 disabled:opacity-50 transition-colors"
-            >
-              {saving ? 'Vista…' : 'Vista liðsupplýsingar'}
-            </button>
-          </div>
+            {error && <p className="text-[14px] text-[#c4242a]" role="alert">{error}</p>}
+            <Button onClick={() => onSave({ name, short_name: shortName, home_venue: homeVenue })} disabled={!name.trim() || saving}>
+              {saving ? t(T.saving) : t({ en: 'Save team details', is: 'Vista upplýsingar' })}
+            </Button>
+          </section>
 
-          {/* Players */}
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Leikmenn</h3>
-
-            {/* Header row */}
-            <div className="grid grid-cols-[52px_1fr_1fr_64px_40px] gap-2 text-xs font-medium text-gray-400 px-1">
-              <span>#</span><span>Fornafn</span><span>Eftirnafn</span><span>Staða</span><span />
+          <section className="space-y-3">
+            <h3 className="text-[16px] font-medium">{t(T.players)}</h3>
+            <div className="grid grid-cols-[56px_1fr_1fr_112px_40px] gap-2">
+              <span className={colHead}>#</span>
+              <span className={colHead}>{t({ en: 'First name', is: 'Fornafn' })}</span>
+              <span className={colHead}>{t({ en: 'Last name', is: 'Eftirnafn' })}</span>
+              <span className={colHead}>{t({ en: 'Position', is: 'Staða' })}</span>
+              <span />
             </div>
 
             {players.map((p, i) => (
-              <div
-                key={p.id ?? `new-${i}`}
-                className={`grid grid-cols-[52px_1fr_1fr_64px_40px] gap-2 items-center ${!p.is_active ? 'opacity-40' : ''}`}
-              >
-                <input
-                  type="number"
-                  value={p.jersey_number}
-                  onChange={e => updateDraft(i, 'jersey_number', e.target.value)}
-                  placeholder="#"
-                  min={1} max={99}
-                  className="px-2 py-1.5 border border-gray-300 rounded-lg text-sm text-center focus:outline-none focus:ring-1 focus:ring-blue-500"
-                />
-                <input
-                  value={p.first_name}
-                  onChange={e => updateDraft(i, 'first_name', e.target.value)}
-                  placeholder="Fornafn"
-                  className={inputCls}
-                />
-                <input
-                  value={p.last_name}
-                  onChange={e => updateDraft(i, 'last_name', e.target.value)}
-                  placeholder="Eftirnafn"
-                  className={inputCls}
-                />
-                <select
-                  value={p.position}
-                  onChange={e => updateDraft(i, 'position', e.target.value)}
-                  className="px-1 py-1.5 border border-gray-300 rounded-lg text-xs bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
-                >
-                  <option value="field">Útl.</option>
-                  <option value="goalkeeper">MV</option>
-                </select>
+              <div key={p.id ?? `new-${i}`} className={`grid grid-cols-[56px_1fr_1fr_112px_40px] gap-2 items-center ${!p.is_active ? 'opacity-50' : ''}`}>
+                <Input type="number" inputMode="numeric" value={p.jersey_number} onChange={e => updateDraft(i, 'jersey_number', e.target.value)}
+                  placeholder="#" min={1} max={99} className="text-center px-1 num" aria-label="#" />
+                <Input value={p.first_name} onChange={e => updateDraft(i, 'first_name', e.target.value)} autoComplete="off"
+                  aria-label={t({ en: 'First name', is: 'Fornafn' })} />
+                <Input value={p.last_name} onChange={e => updateDraft(i, 'last_name', e.target.value)} autoComplete="off"
+                  aria-label={t({ en: 'Last name', is: 'Eftirnafn' })} />
+                <Select value={p.position} onChange={e => updateDraft(i, 'position', e.target.value)} aria-label={t({ en: 'Position', is: 'Staða' })}>
+                  <option value="field">{t({ en: 'Court', is: 'Útileikm.' })}</option>
+                  <option value="goalkeeper">{t({ en: 'Goalkeeper', is: 'Markmaður' })}</option>
+                </Select>
                 <button
-                  onClick={() => p.id
-                    ? updateDraft(i, 'is_active', !p.is_active)
-                    : setPlayers(prev => prev.filter((_, idx) => idx !== i))
-                  }
-                  className="text-gray-300 hover:text-red-400 text-lg leading-none transition-colors"
-                  title={p.is_active ? 'Gera óvirkan' : 'Gera virkan'}
+                  type="button"
+                  onClick={() => p.id ? updateDraft(i, 'is_active', !p.is_active) : setPlayers(prev => prev.filter((_, idx) => idx !== i))}
+                  className="w-9 h-9 rounded-md text-muted hover:text-ink hover:bg-[#f5f6f8] flex items-center justify-center text-[13px]"
+                  aria-label={p.id ? (p.is_active ? t({ en: 'Mark inactive', is: 'Gera óvirkan' }) : t({ en: 'Mark active', is: 'Gera virkan' })) : t({ en: 'Remove row', is: 'Fjarlægja línu' })}
+                  title={p.id ? (p.is_active ? t({ en: 'Mark inactive', is: 'Gera óvirkan' }) : t({ en: 'Mark active', is: 'Gera virkan' })) : t({ en: 'Remove row', is: 'Fjarlægja línu' })}
                 >
-                  {p.id ? (p.is_active ? '×' : '↺') : '×'}
+                  {p.id && !p.is_active
+                    ? <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8a5 5 0 1 0 1.5-3.5M3 3v2.5h2.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                    : <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>}
                 </button>
               </div>
             ))}
 
-            <button
-              onClick={addRow}
-              className="w-full py-2 border-2 border-dashed border-gray-300 rounded-lg text-sm text-gray-400 hover:border-blue-400 hover:text-blue-500 transition-colors"
-            >
-              + Bæta við leikmann
+            <button type="button" onClick={addRow}
+              className="w-full h-11 border border-dashed border-[#9aa0a8] rounded-lg text-[14px] text-muted hover:border-ink hover:text-ink transition-colors">
+              {t({ en: 'Add player', is: 'Bæta við leikmanni' })}
             </button>
 
-            {playerError && <p className="text-xs text-red-600">{playerError}</p>}
-            <button
-              onClick={savePlayers}
-              disabled={savingPlayers}
-              className="px-4 py-2 rounded-lg bg-green-600 text-white text-sm font-medium hover:bg-green-500 disabled:opacity-50 transition-colors"
-            >
-              {savingPlayers ? 'Vista…' : 'Vista leikmenn'}
-            </button>
-          </div>
+            {playerError && <p className="text-[14px] text-[#c4242a]" role="alert">{playerError}</p>}
+            <Button onClick={savePlayers} disabled={savingPlayers}>
+              {savingPlayers ? t(T.saving) : t({ en: 'Save players', is: 'Vista leikmenn' })}
+            </Button>
+          </section>
         </div>
 
-        <div className="px-6 py-4 border-t border-gray-100">
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 rounded-xl border border-gray-300 text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-          >
-            Loka
-          </button>
+        <div className="px-6 py-4 border-t border-line flex justify-end">
+          <Button variant="secondary" onClick={onClose}>{t(T.close)}</Button>
         </div>
       </div>
     </div>

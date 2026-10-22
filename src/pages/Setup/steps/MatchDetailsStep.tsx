@@ -1,7 +1,9 @@
 // Step 2: match details — opponent, date, venue, competition
 import { useState, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Button, Card, Field, Input, Label, Spinner } from '@/components/ui'
+import { Button, Card, Field, Input, Label, Segmented, Select, Spinner } from '@/components/ui'
+import { useT } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
 import {
   getTeams,
   getSeasons,
@@ -21,6 +23,7 @@ interface Props {
 }
 
 export function MatchDetailsStep({ trackedTeamId, onDone, onBack }: Props) {
+  const t = useT()
   const qc = useQueryClient()
 
   const [opponentName, setOpponentName] = useState('')
@@ -92,7 +95,7 @@ export function MatchDetailsStep({ trackedTeamId, onDone, onBack }: Props) {
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      if (!opponentName.trim()) throw new Error('Opponent name is required')
+      if (!opponentName.trim()) throw new Error(t({ en: 'Opponent name is required.', is: 'Nafn mótherja vantar.' }))
 
       const opponent = await upsertTeamByName(opponentName)
 
@@ -134,146 +137,88 @@ export function MatchDetailsStep({ trackedTeamId, onDone, onBack }: Props) {
   return (
     <div className="space-y-6">
       <div>
-        <h2 className="text-xl font-semibold text-gray-900">Match details</h2>
-        <p className="text-sm text-gray-500 mt-1">Fill in the details for today's match.</p>
+        <h1 className="text-[22px] font-semibold leading-tight">{t({ en: 'Match details', is: 'Upplýsingar um leik' })}</h1>
+        <p className="text-[15px] text-muted mt-1">{t({ en: 'Who, where and when.', is: 'Hver, hvar og hvenær.' })}</p>
       </div>
 
-      <Card className="p-4 space-y-4">
-        <h3 className="font-medium text-gray-800">Opponent</h3>
+      <Card className="p-5 space-y-4">
+        <h3 className="text-[16px] font-medium">{t({ en: 'Opponent', is: 'Mótherji' })}</h3>
         <Field>
-          <Label htmlFor="opponent">Opponent team *</Label>
-          <Input
-            id="opponent"
-            value={opponentName}
-            onChange={e => setOpponentName(e.target.value)}
-            placeholder="e.g. Selfoss"
-            list="team-suggestions"
-          />
+          <Label htmlFor="opponent">{t({ en: 'Opponent team', is: 'Mótherjar' })}</Label>
+          <Input id="opponent" value={opponentName} onChange={e => setOpponentName(e.target.value)} autoComplete="off"
+            placeholder={t({ en: 'e.g. ÍF Suðri', is: 't.d. ÍF Suðri' })} list="team-suggestions" />
           <TeamSuggestions />
         </Field>
 
         <Field>
-          <Label>Home or away?</Label>
-          <div className="flex gap-2">
-            {(['home', 'away'] as const).map(opt => (
-              <button
-                key={opt}
-                onClick={() => setIsHome(opt === 'home')}
-                className={`flex-1 py-2 rounded-lg border-2 text-sm font-medium transition-colors ${
-                  (opt === 'home') === isHome
-                    ? 'border-blue-600 bg-blue-50 text-blue-700'
-                    : 'border-gray-200 text-gray-600'
-                }`}
-              >
-                {opt === 'home' ? '🏠 Home' : '✈️ Away'}
-              </button>
-            ))}
-          </div>
+          <Label>{t({ en: 'Home or away?', is: 'Heima eða úti?' })}</Label>
+          <Segmented<'home' | 'away'> full value={isHome ? 'home' : 'away'} onChange={v => setIsHome(v === 'home')}
+            label={t({ en: 'Home or away?', is: 'Heima eða úti?' })}
+            options={[{ v: 'home', label: t(T.home) }, { v: 'away', label: t(T.away) }]} />
         </Field>
 
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Field>
-            <Label htmlFor="match-date">Date & time</Label>
-            <Input
-              id="match-date"
-              type="datetime-local"
-              value={matchDate}
-              onChange={e => setMatchDate(e.target.value)}
-            />
+            <Label htmlFor="match-date">{t({ en: 'Date and time', is: 'Dagsetning og tími' })}</Label>
+            <Input id="match-date" type="datetime-local" value={matchDate} onChange={e => setMatchDate(e.target.value)} />
           </Field>
           <Field>
-            <Label htmlFor="venue">Venue</Label>
-            <Input
-              id="venue"
-              value={venue}
-              onChange={e => setVenue(e.target.value)}
-              placeholder="e.g. Laugardalshöll"
-            />
+            <Label htmlFor="venue">{t({ en: 'Venue', is: 'Leikstaður' })}</Label>
+            <Input id="venue" value={venue} onChange={e => setVenue(e.target.value)} autoComplete="off"
+              placeholder={t({ en: 'e.g. Laugardalshöll', is: 't.d. Laugardalshöll' })} />
           </Field>
         </div>
       </Card>
 
-      <Card className="p-4 space-y-4">
-        <h3 className="font-medium text-gray-800">Competition</h3>
+      <Card className="p-5 space-y-4">
+        <h3 className="text-[16px] font-medium">{t(T.competition)}</h3>
 
-        {/* Season */}
         <Field>
-          <Label>Season</Label>
+          <Label htmlFor="season">{t(T.season)}</Label>
           <div className="flex gap-2">
-            <select
-              value={selectedSeasonId}
-              onChange={e => setSelectedSeasonId(e.target.value)}
-              className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">— no season —</option>
-              {seasons.map(s => (
-                <option key={s.id} value={s.id}>{s.name}</option>
-              ))}
-            </select>
-            <Button variant="ghost" size="sm" onClick={() => setAddingSeason(v => !v)}>
-              {addingSeason ? 'Cancel' : '+ New'}
+            <Select id="season" value={selectedSeasonId} onChange={e => setSelectedSeasonId(e.target.value)} className="flex-1">
+              <option value="">{t({ en: 'No season', is: 'Ekkert tímabil' })}</option>
+              {seasons.map(se => <option key={se.id} value={se.id}>{se.name}</option>)}
+            </Select>
+            <Button variant="secondary" onClick={() => setAddingSeason(x => !x)}>
+              {addingSeason ? t(T.cancel) : t({ en: 'New', is: 'Nýtt' })}
             </Button>
           </div>
           {addingSeason && (
             <div className="flex gap-2 mt-2">
-              <Input
-                value={newSeasonName}
-                onChange={e => setNewSeasonName(e.target.value)}
-                placeholder="e.g. 2025/2026"
-              />
-              <Button
-                size="sm"
-                onClick={() => addSeasonMutation.mutate()}
-                disabled={!newSeasonName.trim() || addSeasonMutation.isPending}
-              >
-                Add
+              <Input value={newSeasonName} onChange={e => setNewSeasonName(e.target.value)} autoComplete="off"
+                placeholder={t({ en: 'e.g. 2026/2027', is: 't.d. 2026/2027' })} aria-label={t(T.season)} />
+              <Button onClick={() => addSeasonMutation.mutate()} disabled={!newSeasonName.trim() || addSeasonMutation.isPending}>
+                {t({ en: 'Add', is: 'Bæta við' })}
               </Button>
             </div>
           )}
         </Field>
 
-        {/* Competition */}
         {selectedSeasonId && (
           <Field>
-            <Label>Competition</Label>
+            <Label htmlFor="competition">{t(T.competition)}</Label>
             <div className="flex gap-2">
-              <select
-                value={selectedCompId}
-                onChange={e => setSelectedCompId(e.target.value)}
-                className="flex-1 px-3 py-2 rounded-lg border border-gray-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">— no competition —</option>
-                {competitions.map(c => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-              </select>
-              <Button variant="ghost" size="sm" onClick={() => setAddingComp(v => !v)}>
-                {addingComp ? 'Cancel' : '+ New'}
+              <Select id="competition" value={selectedCompId} onChange={e => setSelectedCompId(e.target.value)} className="flex-1">
+                <option value="">{t({ en: 'No competition', is: 'Engin keppni' })}</option>
+                {competitions.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </Select>
+              <Button variant="secondary" onClick={() => setAddingComp(x => !x)}>
+                {addingComp ? t(T.cancel) : t({ en: 'New', is: 'Ný' })}
               </Button>
             </div>
             {addingComp && (
-              <div className="flex gap-2 mt-2">
-                <Input
-                  value={newCompName}
-                  onChange={e => setNewCompName(e.target.value)}
-                  placeholder="e.g. Úrvalsdeild"
-                  className="flex-1"
-                />
-                <select
-                  value={newCompLevel}
-                  onChange={e => setNewCompLevel(e.target.value as Competition['level'])}
-                  className="px-2 py-2 rounded-lg border border-gray-300 text-sm bg-white"
-                >
-                  <option value="league">League</option>
-                  <option value="cup">Cup</option>
-                  <option value="friendly">Friendly</option>
-                </select>
-                <Button
-                  size="sm"
-                  onClick={() => addCompMutation.mutate()}
-                  disabled={!newCompName.trim() || addCompMutation.isPending}
-                >
-                  Add
+              <div className="flex flex-wrap sm:flex-nowrap gap-2 mt-2">
+                <Input value={newCompName} onChange={e => setNewCompName(e.target.value)} autoComplete="off"
+                  placeholder={t({ en: 'e.g. Úrvalsdeild', is: 't.d. Úrvalsdeild' })} className="flex-1" aria-label={t(T.competition)} />
+                <Select value={newCompLevel} onChange={e => setNewCompLevel(e.target.value as Competition['level'])} className="!w-auto"
+                  aria-label={t({ en: 'Type', is: 'Tegund' })}>
+                  <option value="league">{t({ en: 'League', is: 'Deild' })}</option>
+                  <option value="cup">{t({ en: 'Cup', is: 'Bikar' })}</option>
+                  <option value="friendly">{t({ en: 'Friendly', is: 'Æfingaleikur' })}</option>
+                </Select>
+                <Button onClick={() => addCompMutation.mutate()} disabled={!newCompName.trim() || addCompMutation.isPending}>
+                  {t({ en: 'Add', is: 'Bæta við' })}
                 </Button>
               </div>
             )}
@@ -282,17 +227,13 @@ export function MatchDetailsStep({ trackedTeamId, onDone, onBack }: Props) {
       </Card>
 
       {createMutation.error && (
-        <p className="text-sm text-red-600">{(createMutation.error as Error).message}</p>
+        <p className="text-[14px] text-[#c4242a]" role="alert">{(createMutation.error as Error).message}</p>
       )}
 
-      <div className="flex justify-between">
-        <Button variant="secondary" onClick={onBack}>← Back</Button>
-        <Button
-          onClick={() => createMutation.mutate()}
-          disabled={!opponentName.trim() || createMutation.isPending}
-          size="lg"
-        >
-          {createMutation.isPending ? 'Creating…' : 'Continue →'}
+      <div className="flex justify-between gap-3">
+        <Button variant="secondary" onClick={onBack}>{t(T.back)}</Button>
+        <Button onClick={() => createMutation.mutate()} disabled={!opponentName.trim() || createMutation.isPending} size="lg">
+          {createMutation.isPending ? t({ en: 'Creating…', is: 'Bý til…' }) : t({ en: 'Continue', is: 'Áfram' })}
         </Button>
       </div>
     </div>
@@ -304,7 +245,7 @@ function TeamSuggestions() {
   const { data: teams = [] } = useQuery({ queryKey: ['teams'], queryFn: getTeams })
   return (
     <datalist id="team-suggestions">
-      {teams.map(t => <option key={t.id} value={t.name} />)}
+      {teams.map(tm => <option key={tm.id} value={tm.name} />)}
     </datalist>
   )
 }

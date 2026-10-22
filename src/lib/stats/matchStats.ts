@@ -1,5 +1,6 @@
 import type { Event, Player } from '@/lib/db/schema'
 import { ORIGINS, DIRECTIONS, type AttackDirection } from '@/lib/attackContext'
+import type { Text } from '@/lib/i18n/lang'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -421,7 +422,7 @@ export interface OriginDirectionCell {
 
 export interface OriginDirectionRow {
   zone: string
-  label: string
+  label: Text
   cells: Record<AttackDirection, OriginDirectionCell>
 }
 

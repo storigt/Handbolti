@@ -1,16 +1,21 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { getAllProfiles, setApproval, type ProfileWithTeam } from '@/lib/supabase/queries'
+import { useLang, useT } from '@/lib/i18n/lang'
+import { AppBar, Button, EmptyLine, PageTitle, Spinner, Tabs } from '@/components/ui'
 
 interface Props {
   onBack: () => void
 }
 
-export function AdminPage({ onBack }: Props) {
-  const qc = useQueryClient()
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved'>('pending')
+type Filter = 'all' | 'pending' | 'approved'
 
-  const { data: profiles = [], isLoading } = useQuery({
+export function AdminPage({ onBack }: Props) {
+  const t = useT()
+  const qc = useQueryClient()
+  const [filter, setFilter] = useState<Filter>('pending')
+
+  const { data: profiles = [], isLoading, isError, refetch } = useQuery({
     queryKey: ['admin', 'profiles'],
     queryFn: getAllProfiles,
   })
@@ -28,128 +33,99 @@ export function AdminPage({ onBack }: Props) {
   })
 
   const pendingCount = profiles.filter(p => !p.is_approved).length
+  const approvedCount = profiles.length - pendingCount
+  const count = (n: number) => <span className="ml-1.5 text-muted num">{n}</span>
 
   return (
-    <div className="min-h-screen bg-slate-900 text-white">
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700">
-        <div>
-          <h1 className="text-lg font-bold">Stjórnborð</h1>
-          <p className="text-xs text-slate-400">Admin Page</p>
-        </div>
-        <button
-          onClick={onBack}
-          className="text-sm text-slate-400 hover:text-white"
-        >
-          ← Til baka
-        </button>
-      </div>
+    <div className="min-h-svh bg-ground text-ink">
+      <AppBar title={t({ en: 'Accounts', is: 'Aðgangar' })} onBack={onBack} backLabel={t({ en: 'Home', is: 'Heim' })} />
 
-      {/* Filter tabs */}
-      <div className="flex border-b border-slate-700">
-        {(['pending', 'approved', 'all'] as const).map(f => (
-          <button
-            key={f}
-            onClick={() => setFilter(f)}
-            className={`px-5 py-3 text-sm font-medium transition-colors relative ${
-              filter === f ? 'text-white' : 'text-slate-400 hover:text-slate-200'
-            }`}
-          >
-            {f === 'pending' ? 'Bíður samþykkis' : f === 'approved' ? 'Samþykktir' : 'Allir'}
-            {f === 'pending' && pendingCount > 0 && (
-              <span className="ml-1.5 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-                {pendingCount}
-              </span>
-            )}
-            {filter === f && (
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-blue-500" />
-            )}
-          </button>
-        ))}
-      </div>
+      <main className="max-w-[880px] mx-auto px-4 sm:px-6 pt-8 pb-16 flex flex-col gap-4">
+        <PageTitle
+          title={t({ en: 'Accounts', is: 'Aðgangar' })}
+          sub={pendingCount > 0
+            ? t({ en: `${pendingCount} waiting for approval.`, is: `${pendingCount} bíða samþykkis.` })
+            : t({ en: 'Nobody is waiting for approval.', is: 'Enginn bíður samþykkis.' })}
+        />
 
-      {/* List */}
-      <div className="divide-y divide-slate-800">
-        {isLoading ? (
-          <div className="flex items-center justify-center py-12">
-            <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+        <section className="bg-white border border-line rounded-lg overflow-hidden">
+          <div className="px-2">
+            <Tabs<Filter> value={filter} onChange={setFilter} label={t({ en: 'Filter accounts', is: 'Sía aðganga' })} options={[
+              { v: 'pending', label: <>{t({ en: 'Waiting', is: 'Bíða' })}{count(pendingCount)}</> },
+              { v: 'approved', label: <>{t({ en: 'Approved', is: 'Samþykktir' })}{count(approvedCount)}</> },
+              { v: 'all', label: <>{t({ en: 'All', is: 'Allir' })}{count(profiles.length)}</> },
+            ]} />
           </div>
-        ) : filtered.length === 0 ? (
-          <p className="text-center text-slate-500 py-12 text-sm">
-            {filter === 'pending' ? 'Engir notendur bíða samþykkis' : 'Engir notendur'}
-          </p>
-        ) : (
-          filtered.map(profile => (
-            <ProfileRow
-              key={profile.id}
-              profile={profile}
-              onApprove={() => approveMutation.mutate({ userId: profile.id, approved: true })}
-              onRevoke={() => approveMutation.mutate({ userId: profile.id, approved: false })}
-              loading={approveMutation.isPending}
-            />
-          ))
-        )}
-      </div>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-12"><Spinner /></div>
+          ) : isError ? (
+            <p className="px-5 py-6 text-[14px] flex items-center gap-3">
+              <span className="w-2 h-2 rounded-full bg-[#c4242a]" aria-hidden="true" />
+              {t({ en: 'Couldn’t load accounts.', is: 'Ekki tókst að sækja aðganga.' })}
+              <button type="button" onClick={() => refetch()} className="font-medium underline underline-offset-4">{t({ en: 'Retry', is: 'Reyna aftur' })}</button>
+            </p>
+          ) : filtered.length === 0 ? (
+            <div className="p-5">
+              <EmptyLine>{filter === 'pending' ? t({ en: 'No accounts are waiting for approval.', is: 'Engir notendur bíða samþykkis.' }) : t({ en: 'No accounts here.', is: 'Engir notendur hér.' })}</EmptyLine>
+            </div>
+          ) : (
+            <ul>
+              {filtered.map(profile => (
+                <ProfileRow
+                  key={profile.id}
+                  profile={profile}
+                  onApprove={() => approveMutation.mutate({ userId: profile.id, approved: true })}
+                  onRevoke={() => approveMutation.mutate({ userId: profile.id, approved: false })}
+                  loading={approveMutation.isPending}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      </main>
     </div>
   )
 }
 
-function ProfileRow({
-  profile,
-  onApprove,
-  onRevoke,
-  loading,
-}: {
+function ProfileRow({ profile, onApprove, onRevoke, loading }: {
   profile: ProfileWithTeam
   onApprove: () => void
   onRevoke: () => void
   loading: boolean
 }) {
-  const date = new Date(profile.created_at).toLocaleDateString('is-IS', {
+  const t = useT()
+  const lang = useLang(s => s.lang)
+  const date = new Date(profile.created_at).toLocaleDateString(lang === 'is' ? 'is-IS' : 'en-GB', {
     day: 'numeric', month: 'short', year: 'numeric',
   })
 
   return (
-    <div className="flex items-center gap-4 px-5 py-4">
-      {/* Avatar */}
-      <div className="w-10 h-10 rounded-full bg-slate-700 flex items-center justify-center text-sm font-bold text-slate-300 shrink-0">
+    <li className="flex items-center gap-4 px-5 min-h-[68px] py-3 border-t border-[#eef0f2]">
+      <div className="w-9 h-9 rounded-full bg-[#eef0f3] flex items-center justify-center text-[14px] font-semibold shrink-0" aria-hidden="true">
         {profile.email.charAt(0).toUpperCase()}
       </div>
 
-      {/* Info */}
       <div className="flex-1 min-w-0">
-        <p className="text-sm font-medium text-white truncate">{profile.email}</p>
-        <p className="text-xs text-slate-400">
-          {profile.teamName ? `Lið: ${profile.teamName}` : 'Ekkert lið enn'} · {date}
+        <p className="text-[15px] font-medium truncate">{profile.email}</p>
+        <p className="text-[13px] text-muted truncate">
+          {profile.teamName ?? t({ en: 'No team yet', is: 'Ekkert lið enn' })} · {t({ en: 'joined', is: 'skráð' })} {date}
         </p>
       </div>
 
-      {/* Status + actions */}
-      <div className="flex items-center gap-2 shrink-0">
+      <div className="flex items-center gap-3 shrink-0">
         {profile.is_approved ? (
           <>
-            <span className="text-xs text-green-400 font-medium">Samþykkt</span>
-            <button
-              onClick={onRevoke}
-              disabled={loading}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-slate-700 text-slate-300 hover:bg-red-900 hover:text-red-300 disabled:opacity-40 transition-colors"
-            >
-              Afturkalla
-            </button>
+            <span className="hidden sm:inline text-[12px] font-medium px-2 py-0.5 rounded bg-[#dcfae5] text-[#04250e]">{t({ en: 'Approved', is: 'Samþykkt' })}</span>
+            <Button variant="danger" size="sm" onClick={onRevoke} disabled={loading}>{t({ en: 'Revoke', is: 'Afturkalla' })}</Button>
           </>
         ) : (
           <>
-            <span className="text-xs text-yellow-400 font-medium">Bíður</span>
-            <button
-              onClick={onApprove}
-              disabled={loading}
-              className="px-3 py-1.5 text-xs font-medium rounded-lg bg-blue-600 text-white hover:bg-blue-500 disabled:opacity-40 transition-colors"
-            >
-              Samþykkja
-            </button>
+            <span className="hidden sm:inline text-[12px] font-medium px-2 py-0.5 rounded bg-[#fffbeb] text-[#92400e] border border-[#fde68a]">{t({ en: 'Waiting', is: 'Bíður' })}</span>
+            <Button variant="primary" size="sm" onClick={onApprove} disabled={loading}>{t({ en: 'Approve', is: 'Samþykkja' })}</Button>
           </>
         )}
       </div>
-    </div>
+    </li>
   )
 }

@@ -7,7 +7,8 @@ import { ConfirmStep } from './steps/ConfirmStep'
 import { getTrackedTeamId } from '@/lib/supabase/queries'
 import { supabase } from '@/lib/supabase/client'
 import type { Match, Team } from '@/lib/db/schema'
-import { Spinner } from '@/components/ui'
+import { AppBar, Spinner } from '@/components/ui'
+import { useT } from '@/lib/i18n/lang'
 
 type Step = 'team-setup' | 'match-details' | 'roster' | 'confirm'
 
@@ -58,38 +59,35 @@ export function MatchSetupWizard({ initialTeamId, onMatchStarted, onCancel }: Pr
   const visibleSteps: Step[] = ['team-setup', 'match-details', 'roster', 'confirm']
   const currentIndex = visibleSteps.indexOf(step)
 
-  return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* Header */}
-      <div className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-3">
-        {onCancel && (
-          <button onClick={onCancel} className="text-gray-500 hover:text-gray-700 text-sm font-medium">
-            ← Back
-          </button>
-        )}
-        <h1 className="text-lg font-bold text-gray-900">New Match</h1>
-      </div>
+  const t = useT()
+  const stepNames: Record<Step, string> = {
+    'team-setup': t({ en: 'Team', is: 'Lið' }),
+    'match-details': t({ en: 'Match', is: 'Leikur' }),
+    roster: t({ en: 'Roster', is: 'Hópur' }),
+    confirm: t({ en: 'Start', is: 'Byrja' }),
+  }
 
-      {/* Progress bar */}
-      <div className="flex bg-white border-b border-gray-100">
-        {visibleSteps.map((s, i) => (
-          <div
-            key={s}
-            className={`flex-1 py-2 text-center text-xs font-medium border-b-2 transition-colors ${
-              i === currentIndex
-                ? 'border-blue-600 text-blue-600'
-                : i < currentIndex
-                ? 'border-green-500 text-green-600'
-                : 'border-transparent text-gray-400'
-            }`}
-          >
-            {i < currentIndex ? '✓ ' : `${i + 1}. `}
-            {s === 'team-setup' ? 'My team' :
-             s === 'match-details' ? 'Match details' :
-             s === 'roster' ? 'Roster' : 'Confirm'}
-          </div>
-        ))}
-      </div>
+  return (
+    <div className="min-h-svh bg-ground text-ink flex flex-col">
+      <AppBar title={t({ en: 'New match', is: 'Nýr leikur' })} onBack={onCancel} backLabel={t({ en: 'Home', is: 'Heim' })} />
+
+      {/* Progress: where you are in four steps */}
+      <nav aria-label={t({ en: 'Setup steps', is: 'Skref' })} className="bg-white border-b border-line">
+        <ol className="max-w-2xl mx-auto px-4 grid grid-cols-4">
+          {visibleSteps.map((st, i) => (
+            <li key={st} aria-current={i === currentIndex ? 'step' : undefined}
+              className={`relative h-11 flex items-center justify-center gap-1.5 text-[14px] ${
+                i === currentIndex ? 'text-ink font-medium' : i < currentIndex ? 'text-ink' : 'text-muted'
+              }`}>
+              {i < currentIndex && (
+                <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true"><path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              )}
+              {stepNames[st]}
+              <span className={`absolute left-2 right-2 bottom-0 h-0.5 ${i <= currentIndex ? 'bg-ink' : 'bg-transparent'}`} aria-hidden="true" />
+            </li>
+          ))}
+        </ol>
+      </nav>
 
       {/* Step content */}
       <div className="flex-1 flex justify-center py-8 px-4">

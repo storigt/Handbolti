@@ -1,4 +1,5 @@
 import type { Event } from '@/lib/db/schema'
+import { computeExtraInputs } from './indexInputs'
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -54,6 +55,17 @@ export interface IndexRaw {
   oppSWShots: number
   gkSavePct: number        // on-goal save %
   gkSavePctBySegment: number[]
+  // Inputs for user-defined indices (not used by the built-in numbers above)
+  gkSegCount: number       // 10-minute segments that have keeper shot data
+  gkSegStdev: number       // spread of save % across those segments
+  gkSaves: number          // saves + parries by our keepers
+  yellowCards: number
+  rebounds: number
+  penGoals: number
+  penShots: number
+  positiveResponse: number
+  /** Every other countable number (indexInputs.ts), for user-defined indices */
+  extra: Record<string, number>
 }
 
 export interface IndexBreakdown {
@@ -188,6 +200,16 @@ export function computeIndices(events: Event[], trackedTeamId: string): IndexBre
     e => e.phase_type === 'second_wave' && shotSubTypes.includes(e.sub_type ?? ''),
   ).length
 
+  // Segments that actually have keeper shot data (Save Variability uses only these)
+  const segsWithData = gkSavePctBySegment.filter((_, i) => {
+    const lo = i * 10, hi = (i + 1) * 10
+    return gkEvents.some(e => {
+      const m = e.match_minute ?? 0
+      return m >= lo && m < hi && shotSubTypes.includes(e.sub_type ?? '')
+    })
+  })
+  const penShotsEv = ourShots.filter(e => e.shot_range === 'penalty')
+
   const raw: IndexRaw = {
     ourGoals, ourTotalShots, ourShotEff,
     oppGoals, oppOnGoalShots: oppOnGoal, oppTotalShots, oppMissed, oppShotEff,
@@ -200,6 +222,15 @@ export function computeIndices(events: Event[], trackedTeamId: string): IndexBre
     ourFBShots, ourFBGoals, ourSWShots, ourSWGoals,
     oppFBShots, oppSWShots,
     gkSavePct, gkSavePctBySegment,
+    gkSegCount: segsWithData.length,
+    gkSegStdev: stdev(segsWithData),
+    gkSaves: oppSaves + oppParries,
+    yellowCards: susp.filter(e => e.sub_type === 'yellow_card').length,
+    rebounds: def.filter(e => e.sub_type === 'rebound').length,
+    penGoals: penShotsEv.filter(e => e.sub_type === 'goal').length,
+    penShots: penShotsEv.length,
+    positiveResponse: gkEvents.filter(e => e.sub_type === 'positive_response').length,
+    extra: computeExtraInputs(events, trackedTeamId),
   }
 
   // ── DQIdef ────────────────────────────────────────────────────────────────
@@ -283,14 +314,7 @@ export function computeIndices(events: Event[], trackedTeamId: string): IndexBre
   // ── GKI ──────────────────────────────────────────────────────────────────
   const gki_saveEff = clamp(gkSavePct)
 
-  // Save Variability — only segments with data
-  const segsWithData = gkSavePctBySegment.filter((_, i) => {
-    const lo = i * 10, hi = (i + 1) * 10
-    return gkEvents.some(e => {
-      const m = e.match_minute ?? 0
-      return m >= lo && m < hi && shotSubTypes.includes(e.sub_type ?? '')
-    })
-  })
+  // Save Variability — only segments with data (segsWithData, above)
   const gki_saveVariability = clamp(
     segsWithData.length >= 2 ? 100 * Math.exp(-stdev(segsWithData) / 15) : 100,
   )

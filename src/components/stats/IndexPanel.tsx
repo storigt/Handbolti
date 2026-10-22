@@ -1,396 +1,184 @@
-import { useState } from 'react'
-import type { IndexBreakdown, IndexRaw } from '@/lib/stats/indices'
+// Indices: one card per index, drawn from its definition (src/lib/stats/indexDefs.ts).
+// The six originals and the user's own all work the same way; "Edit indices"
+// opens the editor. Colours follow each index's own green/yellow/red limits.
+import { useMemo, useState } from 'react'
+import type { IndexBreakdown } from '@/lib/stats/indices'
+import {
+  evaluateIndices, inputValues, band, BAND_BG, BAND_TEXT, INPUTS, SEGMENT_INPUTS,
+  type IndexDef, type IndexResult,
+} from '@/lib/stats/indexDefs'
+import { parse, namesIn } from '@/lib/stats/formula'
+import { useIndexStore } from '@/store/indexStore'
+import { useT, type Text } from '@/lib/i18n/lang'
+import { Button } from '@/components/ui'
+import { IndexEditor } from './IndexEditor'
+import { colourNote, useLabel } from './indexUi'
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+const fmt = (v: number) => (Math.abs(v) >= 1000 ? Math.round(v).toString() : Math.abs(v) < 1 && v !== 0 ? v.toFixed(2) : v.toFixed(1))
 
-function scoreColor(v: number): string {
-  if (v >= 70) return 'text-green-600'
-  if (v >= 50) return 'text-amber-500'
-  return 'text-red-500'
-}
+// ─── Bars ─────────────────────────────────────────────────────────────────────
 
-function barColor(v: number): string {
-  if (v >= 70) return 'bg-green-500'
-  if (v >= 50) return 'bg-amber-400'
-  return 'bg-red-400'
-}
-
-function fmt(v: number): string {
-  return v.toFixed(1)
-}
-
-function pct(v: number): string {
-  return `${v.toFixed(1)}%`
-}
-
-// ─── Score gauge bar ──────────────────────────────────────────────────────────
-
-function ScoreBar({ value }: { value: number }) {
+function ScoreBar({ def, value }: { def: IndexDef; value: number }) {
+  const b = band(def, value)
   return (
-    <div className="flex items-center gap-2 flex-1">
-      <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
-        <div
-          className={`h-full rounded-full transition-all ${barColor(value)}`}
-          style={{ width: `${value}%` }}
-        />
+    <div className="flex items-center gap-2 flex-1 min-w-0">
+      <div className="flex-1 h-2 bg-[#eef0f2] rounded-full overflow-hidden">
+        <div className={`h-full rounded-full transition-all ${BAND_BG[b]}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </div>
-      <span className={`text-sm font-bold tabular-nums w-10 text-right ${scoreColor(value)}`}>
-        {fmt(value)}
-      </span>
+      <span className={`text-[17px] font-semibold num w-14 text-right ${BAND_TEXT[b]}`}>{fmt(value)}</span>
     </div>
   )
 }
 
-// ─── Sub-score row ────────────────────────────────────────────────────────────
-
-function SubRow({ label, value, weight }: { label: string; value: number; weight: string }) {
+function SubRow({ def, label, value }: { def: IndexDef; label: string; value: number }) {
+  const b = band(def, value)
+  const inScale = value >= 0 && value <= 100
   return (
-    <div className="flex items-center gap-2 py-1">
-      <span className="text-xs text-gray-500 w-9 shrink-0">{weight}</span>
-      <span className="text-xs text-gray-700 flex-1">{label}</span>
-      <div className="w-20 h-1 bg-gray-100 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColor(value)}`} style={{ width: `${value}%` }} />
-      </div>
-      <span className={`text-xs font-semibold tabular-nums w-8 text-right ${scoreColor(value)}`}>
-        {fmt(value)}
-      </span>
+    <div className="flex items-center gap-3 py-1.5">
+      <span className="text-[14px] text-ink flex-1 min-w-0">{label}</span>
+      {inScale && (
+        <div className="w-24 h-1.5 bg-[#eef0f2] rounded-full overflow-hidden">
+          <div className={`h-full rounded-full ${BAND_BG[b]}`} style={{ width: `${value}%` }} />
+        </div>
+      )}
+      <span className={`text-[14px] font-medium num w-14 text-right ${inScale ? BAND_TEXT[b] : 'text-ink'}`}>{fmt(value)}</span>
     </div>
   )
 }
 
-// ─── Raw data row ─────────────────────────────────────────────────────────────
-
-function RawRow({ label, value }: { label: string; value: string | number }) {
+function RawRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex items-center justify-between py-0.5">
-      <span className="text-xs text-gray-400">{label}</span>
-      <span className="text-xs font-mono text-gray-600">{value}</span>
+    <div className="flex items-center justify-between gap-4 py-1 border-t border-[#eef0f2] first:border-t-0">
+      <span className="text-[13px] text-muted">{label}</span>
+      <span className="text-[13px] num text-ink">{value}</span>
     </div>
   )
 }
 
-// ─── Formula block ────────────────────────────────────────────────────────────
+function Section({ text }: { text: Text }) {
+  const t = useT()
+  return <p className="text-[13px] font-medium text-ink pt-4 pb-1">{t(text)}</p>
+}
 
-function FormulaLine({ label, formula }: { label?: string; formula: string }) {
+// ─── One index ────────────────────────────────────────────────────────────────
+
+/** Steps that depend on whole-match keeper segments, directly or through earlier steps. */
+function segmentSteps(def: IndexDef): Set<string> {
+  const out = new Set<string>()
+  for (const s of def.steps) {
+    try {
+      const names = namesIn(parse(s.formula))
+      if ([...names].some(n => SEGMENT_INPUTS.has(n) || out.has(n))) out.add(s.key)
+    } catch { /* shown as an error elsewhere */ }
+  }
+  return out
+}
+
+function IndexCard({ def, result, inputs, minuteFiltered }: {
+  def: IndexDef
+  result: IndexResult
+  inputs: Record<string, number>
+  minuteFiltered: boolean
+}) {
+  const t = useT()
+  const label = useLabel()
+  const [open, setOpen] = useState(false)
+  const [formulas, setFormulas] = useState(false)
+  const segSteps = useMemo(() => segmentSteps(def), [def])
+  const shownSteps = def.steps.filter(s => s.show && !(minuteFiltered && segSteps.has(s.key)))
+  const shownInputs = result.inputsUsed.filter(k => !(minuteFiltered && SEGMENT_INPUTS.has(k)))
+
+  return (
+    <div className="border border-line rounded-lg overflow-hidden bg-white">
+      <button type="button" aria-expanded={open} onClick={() => setOpen(o => !o)}
+        className="w-full px-4 py-3.5 flex items-center gap-4 text-left hover:bg-[#f8f9fa] transition-colors">
+        <div className="shrink-0 w-[150px] sm:w-[220px] min-w-0">
+          <span className="text-[15px] font-semibold">{def.key}</span>
+          <p className="text-[12px] text-muted leading-snug mt-0.5 truncate">{label(def.name)}</p>
+        </div>
+        {result.value === null
+          ? <span className="flex-1 text-[14px] text-[#c4242a]">{t({ en: 'Formula error', is: 'Villa í formúlu' })}</span>
+          : <ScoreBar def={def} value={result.value} />}
+        <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true" className={`text-muted shrink-0 transition-transform ${open ? 'rotate-180' : ''}`}><path d="m4 6 4 4 4-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 border-t border-line">
+          {result.error && <p className="pt-3 text-[14px] text-[#c4242a]">{t(result.error)}</p>}
+          {shownSteps.length > 0 && (
+            <>
+              <Section text={{ en: 'Components', is: 'Hlutfallstölur' }} />
+              {shownSteps.map(s => <SubRow key={s.key} def={def} label={label(s.label)} value={result.steps[s.key] ?? 0} />)}
+            </>
+          )}
+          {shownInputs.length > 0 && (
+            <>
+              <Section text={{ en: 'Inputs', is: 'Grunntölur' }} />
+              {shownInputs.map(k => {
+                const meta = INPUTS.find(i => i.key === k)!
+                const v = inputs[k] ?? 0
+                return <RawRow key={k} label={t(meta.label)} value={meta.pct ? `${v.toFixed(1)}%` : Number.isInteger(v) ? String(v) : v.toFixed(2)} />
+              })}
+            </>
+          )}
+          <div className="mt-3">
+            <button type="button" aria-expanded={formulas} onClick={() => setFormulas(o => !o)}
+              className="text-[13px] text-muted hover:text-ink underline underline-offset-4">
+              {formulas ? t({ en: 'Hide formulas', is: 'Fela formúlur' }) : t({ en: 'Show formulas', is: 'Sýna formúlur' })}
+            </button>
+            {formulas && (
+              <div className="mt-1 space-y-1">
+                <Formula label={def.key} formula={def.formula} />
+                {def.steps.map(s => <Formula key={s.key} label={`${s.key} · ${label(s.label)}`} formula={s.formula} />)}
+              </div>
+            )}
+          </div>
+          <p className="text-[12px] text-muted mt-3">{colourNote(def, t)}</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function Formula({ label, formula }: { label: string; formula: string }) {
   return (
     <div className="py-0.5">
-      {label && <p className="text-[10px] font-semibold text-gray-400 mt-1.5 mb-0.5">{label}</p>}
-      <code className="block text-[10px] font-mono text-indigo-700 bg-indigo-50 rounded px-2 py-1 leading-relaxed whitespace-pre-wrap break-all">
-        {formula}
-      </code>
+      <p className="text-[12px] font-medium text-muted mt-2 mb-1">{label}</p>
+      <code className="block text-[12px] font-mono text-ink bg-[#f5f6f8] border border-line rounded-md px-2.5 py-1.5 leading-relaxed whitespace-pre-wrap break-all">{formula}</code>
     </div>
   )
 }
 
-function FormulaSection({ children }: { children: React.ReactNode }) {
-  const [open, setOpen] = useState(false)
-  return (
-    <div className="mt-2">
-      <button
-        onClick={() => setOpen(o => !o)}
-        className="text-[10px] font-medium text-indigo-500 hover:text-indigo-700 flex items-center gap-1"
-      >
-        {open ? '▲' : '▼'} Sýna formúlur
-      </button>
-      {open && (
-        <div className="mt-1 space-y-0.5">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Index card ───────────────────────────────────────────────────────────────
-
-function IndexCard({
-  name,
-  fullName,
-  value,
-  children,
-}: {
-  name: string
-  fullName: string
-  value: number
-  children: React.ReactNode
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden bg-white">
-      <button
-        className="w-full px-4 py-3 flex items-center gap-3 text-left hover:bg-gray-50 transition-colors"
-        onClick={() => setOpen(o => !o)}
-      >
-        <div className="shrink-0">
-          <span className="text-sm font-bold text-gray-800">{name}</span>
-          <p className="text-[10px] text-gray-400 leading-none mt-0.5">{fullName}</p>
-        </div>
-        <ScoreBar value={value} />
-        <span className="text-gray-400 text-xs shrink-0">{open ? '▲' : '▼'}</span>
-      </button>
-
-      {open && (
-        <div className="px-4 pb-4 border-t border-gray-100 bg-gray-50">
-          {children}
-        </div>
-      )}
-    </div>
-  )
-}
-
-// ─── Individual index breakdowns ───────────────────────────────────────────────
-
-function GIQIBreakdown({ b }: { b: IndexBreakdown }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="DQIdef" value={b.DQIdef} weight="25%" />
-      <SubRow label="DQIoff" value={b.DQIoff} weight="25%" />
-      <SubRow label="ELI — Energy Level Index" value={b.ELI} weight="25%" />
-      <SubRow label="FI — Focus Index" value={b.FI} weight="25%" />
-      <FormulaSection>
-        <FormulaLine formula="GIQI = 0.25×DQIdef + 0.25×DQIoff + 0.25×ELI + 0.25×FI" />
-      </FormulaSection>
-    </>
-  )
-}
-
-function DQIdefBreakdown({ b, r }: { b: IndexBreakdown; r: IndexRaw }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="1vs1 Control Score" value={b.def_1v1Control} weight="50%" />
-      <SubRow label="Defensive Disruption Score" value={b.def_disruption} weight="30%" />
-      <SubRow label="Defensive Discipline Score" value={b.def_discipline} weight="10%" />
-      <SubRow label="Foul Quality Score" value={b.def_foulQuality} weight="10%" />
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Grunntölur</p>
-      <RawRow label="1vs1% (unnið/tapað)" value={`${fmt(r.duelPct)}% (${r.duelWon}/${r.duelWon + r.duelLost})`} />
-      <RawRow label="Fríkast" value={r.frikanst} />
-      <RawRow label="Stolinn" value={r.stolinn} />
-      <RawRow label="Hár kontakt 9m+" value={r.harKontakt} />
-      <RawRow label="Skotnýting Andstæðinga" value={pct(r.oppShotEff)} />
-      <RawRow label="Fjöldi skota andstæðinga" value={r.oppTotalShots} />
-      <RawRow label="Skot á mark" value={r.oppOnGoalShots} />
-      <RawRow label="Framhjá/Stöng" value={r.oppMissed} />
-      <RawRow label="Víti á sig" value={r.vitiASig} />
-      <RawRow label="2mínútur" value={r.twoMin} />
-      <RawRow label="Rautt" value={r.rautt} />
-      <FormulaSection>
-        <FormulaLine formula="DQIdef = 0.5×1v1Control + 0.3×Disruption + 0.1×Discipline + 0.1×FoulQuality" />
-        <FormulaLine
-          label="A. 1vs1 Control Score"
-          formula="= 0.4×duelPct + 0.3×fríkast + 0.3×(100 − oppShotEff)"
-        />
-        <FormulaLine
-          label="B. Defensive Disruption Score"
-          formula={`ratio = (harKontakt + fríkast + stolinn) / oppTotalShots × 100
-inner = 0.75×min(1, ratio/45) + 0.25×min(1, (100−oppShotEff)/70)
-= min(100, 100 × max(0, inner)^1.5)`}
-        />
-        <FormulaLine
-          label="C. Defensive Discipline Score"
-          formula="= 100 − (vitiASig×1.5 + twoMin + rautt×2) / oppTotalShots × 100"
-        />
-        <FormulaLine
-          label="D. Foul Quality Score"
-          formula="= fríkast / (twoMin×1.5 + rautt×2 + fríkast) × 100"
-        />
-      </FormulaSection>
-    </>
-  )
-}
-
-function DQIoffBreakdown({ b, r }: { b: IndexBreakdown; r: IndexRaw }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="Chance Creation Score" value={b.off_chanceCreation} weight="40%" />
-      <SubRow label="Shot Efficiency Score" value={b.off_shotEfficiency} weight="35%" />
-      <SubRow label="Ball Control" value={b.off_ballControl} weight="25%" />
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Grunntölur</p>
-      <RawRow label="Mörk okkar" value={r.ourGoals} />
-      <RawRow label="Skot okkar (alls)" value={r.ourTotalShots} />
-      <RawRow label="Skotnýting okkar" value={pct(r.ourShotEff)} />
-      <RawRow label="Sköpuð færi" value={r.ourAssists} />
-      <RawRow label="Fiskað víti" value={r.fiskaViti} />
-      <RawRow label="Fjöldi sókna" value={r.ourAttacks} />
-      <RawRow label="Tapaður bolti" value={r.ourTurnovers} />
-      <FormulaSection>
-        <FormulaLine formula="DQIoff = 0.4×ChanceCreation + 0.35×ShotEff + 0.25×BallControl" />
-        <FormulaLine
-          label="A. Chance Creation Score"
-          formula="= (ourAssists + fiskaViti) / ourAttacks × 100 − ourTurnovers / ourAttacks × 100"
-        />
-        <FormulaLine
-          label="B. Shot Efficiency Score"
-          formula="= ourGoals / ourTotalShots × 100"
-        />
-        <FormulaLine
-          label="C. Ball Control"
-          formula="= (ourAttacks − ourTurnovers) / ourAttacks × 100"
-        />
-      </FormulaSection>
-    </>
-  )
-}
-
-function ELIBreakdown({ b, r }: { b: IndexBreakdown; r: IndexRaw }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="DAS — Defensive Activity Score" value={b.eli_das} weight="35%" />
-      <SubRow label="TIS — Transition Intensity Score" value={b.eli_tis} weight="65%" />
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Grunntölur</p>
-      <RawRow label="Stolinn" value={r.stolinn} />
-      <RawRow label="Blokk" value={r.blokk} />
-      <RawRow label="Hár Kontakt 9m+" value={r.harKontakt} />
-      <RawRow label="Fríkast" value={r.frikanst} />
-      <RawRow label="Tapaðir boltar andstæðinga" value={r.tapAnd} />
-      <RawRow label="Fjöldi sókna andstæðinga" value={r.oppAttacks} />
-      <RawRow label="Hraðaupphlaup — mörk/skot" value={`${r.ourFBGoals}/${r.ourFBShots}`} />
-      <RawRow label="Seinni bylgja — mörk/skot" value={`${r.ourSWGoals}/${r.ourSWShots}`} />
-      <RawRow label="Skot andstæðinga úr hraðaupphlaupum" value={r.oppFBShots} />
-      <RawRow label="Skot andstæðinga úr seinni bylgju" value={r.oppSWShots} />
-      <FormulaSection>
-        <FormulaLine formula="ELI = 0.35×DAS + 0.65×TIS" />
-        <FormulaLine
-          label="A. Defensive Activity Score (DAS)"
-          formula={`dasRaw = (stolinn + blokk + harKontakt + fríkast + oppLostBall) / oppAttacks × 100
-DAS = 100 × (1 − exp(−0.03 × dasRaw))`}
-        />
-        <FormulaLine
-          label="B. Transition Intensity Score (TIS)"
-          formula={`OTE = (ourFBGoals + ourSWGoals) / (ourFBShots + ourSWShots) × 100
-OTV = (ourFBShots + ourSWShots) / ourTotalShots × 100
-DTC = 100 × (1 − (oppFBShots + oppSWShots) / oppTotalShots)
-TIS = 0.35×OTE + 0.30×OTV + 0.35×DTC`}
-        />
-      </FormulaSection>
-    </>
-  )
-}
-
-function FIBreakdown({ b, r }: { b: IndexBreakdown; r: IndexRaw }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="OCSS — Offensive Control & Stability Score" value={b.fi_ocss} weight="35%" />
-      <SubRow label="DCSS — Defensive Control & Stability Score" value={b.fi_dcss} weight="35%" />
-      <SubRow label="ESS — Execution Stability Score" value={b.fi_ess} weight="30%" />
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Grunntölur</p>
-      <RawRow label="Tapaður bolti" value={r.ourTurnovers} />
-      <RawRow label="Fjöldi sókna" value={r.ourAttacks} />
-      <RawRow label="Skotnýting okkar" value={pct(r.ourShotEff)} />
-      <RawRow label="Árás 1á1%" value={pct(r.duelPct)} />
-      <RawRow label="Fjöldi sókna andstæðinga" value={r.oppAttacks} />
-      <RawRow label="Skoruð mörk andstæðinga" value={r.oppGoals} />
-      <RawRow label="2mínútur" value={r.twoMin} />
-      <RawRow label="Víti á sig" value={r.vitiASig} />
-      <FormulaSection>
-        <FormulaLine formula="FI = 0.35×OCSS + 0.35×DCSS + 0.30×ESS" />
-        <FormulaLine
-          label="A. Offensive Control & Stability Score (OCSS)"
-          formula="= (100 × (1 − ourTurnovers/ourAttacks) + ourShotEff) / 2"
-        />
-        <FormulaLine
-          label="B. Defensive Control & Stability Score (DCSS)"
-          formula={`oppDefEff = (oppAttacks − oppGoals) / oppAttacks × 100
-= 0.7 × (0.3×duelPct + 0.4×oppDefEff + 0.15×fríkast + 0.15×stolinn)
-+ 0.3 × (100 − 0.5×twoMin − 0.5×vitiASig)`}
-        />
-        <FormulaLine
-          label="C. Execution Stability Score (ESS)"
-          formula="= 0.6×ourShotEff + 0.4×BallControl"
-        />
-      </FormulaSection>
-    </>
-  )
-}
-
-function GKIBreakdown({ b, r, minuteFiltered }: { b: IndexBreakdown; r: IndexRaw; minuteFiltered: boolean }) {
-  return (
-    <>
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Hlutfallstölur</p>
-      <SubRow label="Save Efficiency" value={b.gki_saveEff} weight="70%" />
-      {!minuteFiltered && (
-        <>
-          <SubRow label="Save Stability" value={b.gki_saveStability} weight="30%" />
-          <div className="pl-4 border-l-2 border-gray-200 ml-2 mt-1 space-y-0.5">
-            <SubRow label="Save Variability" value={b.gki_saveVariability} weight="90%" />
-            <SubRow label="Empty Phase Rate" value={b.gki_emptyPhaseRate} weight="10%" />
-          </div>
-        </>
-      )}
-      <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-3 pb-1">Grunntölur</p>
-      <RawRow label="Markvarsla %" value={pct(r.gkSavePct)} />
-      <RawRow label="Skot á mark" value={r.oppOnGoalShots} />
-      <RawRow label="Mörk gegn" value={r.oppGoals} />
-      <RawRow label="Fjöldi Empty Phase (3 mörk andstæðinga í röð)" value={r.emptyPhases} />
-      <RawRow label="Fjöldi skota andstæðinga" value={r.oppTotalShots} />
-      {!minuteFiltered && (
-        <>
-          <p className="text-[10px] font-semibold text-gray-500 uppercase tracking-wide pt-2 pb-1">
-            Markvarsla% á 10 mín. bilum
-          </p>
-          {r.gkSavePctBySegment.map((seg, i) => (
-            <RawRow key={i} label={`Markvarsla% ${i * 10}–${(i + 1) * 10}mín`} value={pct(seg)} />
-          ))}
-        </>
-      )}
-      <FormulaSection>
-        <FormulaLine formula="GKI = 0.7×SaveEff + 0.3×SaveStability" />
-        <FormulaLine
-          label="A. Save Efficiency"
-          formula="= (saves + parries) / (saves + parries + goals_conceded) × 100"
-        />
-        <FormulaLine
-          label="B. Save Stability"
-          formula="= 0.9×SaveVariability + 0.1×EmptyPhaseRate"
-        />
-        <FormulaLine
-          label="  Save Variability"
-          formula="= 100 × exp(−stdev(savePct per 10min segment) / 15)"
-        />
-        <FormulaLine
-          label="  Empty Phase Rate"
-          formula="= 100 − emptyPhases / (oppTotalShots − 2) × 100"
-        />
-      </FormulaSection>
-    </>
-  )
-}
-
-// ─── Main export ───────────────────────────────────────────────────────────────
+// ─── Main export ──────────────────────────────────────────────────────────────
 
 export function IndexPanel({ breakdown, minuteFiltered = false }: { breakdown: IndexBreakdown; minuteFiltered?: boolean }) {
-  const { GIQI, DQIdef, DQIoff, ELI, FI, GKI, raw } = breakdown
+  const t = useT()
+  const defs = useIndexStore(s => s.defs)
+  const syncState = useIndexStore(s => s.syncState)
+  const [editing, setEditing] = useState(false)
+  const evaluated = useMemo(() => evaluateIndices(defs, breakdown.raw), [defs, breakdown.raw])
+  const inputs = useMemo(() => inputValues(breakdown.raw), [breakdown.raw])
+  const visible = defs.filter(d => !d.hidden)
 
   return (
-    <div className="space-y-2 p-3">
-      <IndexCard name="GIQI" fullName="Game IQ Index" value={GIQI}>
-        <GIQIBreakdown b={breakdown} />
-      </IndexCard>
-
-      <IndexCard name="DQIdef" fullName="Decision Quality Index" value={DQIdef}>
-        <DQIdefBreakdown b={breakdown} r={raw} />
-      </IndexCard>
-
-      <IndexCard name="DQIoff" fullName="Decision Quality Index – Offense" value={DQIoff}>
-        <DQIoffBreakdown b={breakdown} r={raw} />
-      </IndexCard>
-
-      <IndexCard name="ELI" fullName="Energy Level Index" value={ELI}>
-        <ELIBreakdown b={breakdown} r={raw} />
-      </IndexCard>
-
-      <IndexCard name="FI" fullName="Focus Index" value={FI}>
-        <FIBreakdown b={breakdown} r={raw} />
-      </IndexCard>
-
-      <IndexCard name="GKI" fullName="GK Index" value={GKI}>
-        <GKIBreakdown b={breakdown} r={raw} minuteFiltered={minuteFiltered} />
-      </IndexCard>
+    <div className="space-y-2 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2 pb-1 print:hidden">
+        <p className="text-[13px] text-muted">
+          {syncState === 'local'
+            ? t({ en: 'Index changes are saved on this device for now and will be sent to your account automatically.', is: 'Breytingarnar eru vistaðar á þessu tæki í bili og fara sjálfkrafa á aðganginn þinn.' })
+            : t({ en: 'Tap an index to see how it is calculated.', is: 'Smelltu á vísitölu til að sjá hvernig hún er reiknuð.' })}
+        </p>
+        <Button variant="secondary" size="sm" onClick={() => setEditing(true)}>{t({ en: 'Edit indices', is: 'Breyta vísitölum' })}</Button>
+      </div>
+      {visible.map(d => (
+        <IndexCard key={d.id} def={d} result={evaluated.byId[d.id]} inputs={inputs} minuteFiltered={minuteFiltered} />
+      ))}
+      {visible.length === 0 && (
+        <p className="text-[14px] text-muted border border-dashed border-[#cfd4db] rounded-lg px-3 py-2.5">
+          {t({ en: 'All indices are hidden. Use Edit indices to show them again.', is: 'Allar vísitölur eru faldar. Notaðu „Breyta vísitölum“ til að sýna þær aftur.' })}
+        </p>
+      )}
+      {editing && <IndexEditor raw={breakdown.raw} onClose={() => setEditing(false)} />}
     </div>
   )
 }

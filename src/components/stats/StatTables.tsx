@@ -1,4 +1,9 @@
-import { useMemo } from 'react'
+// Stat tables (attack, defence, goalkeeping, team). Column order is unchanged
+// from earlier versions so coaches find every number where it always was;
+// only the look and the language are new. Tables follow the app rules: 12px
+// grey sentence-case headers, a 1px line opening each column group, numbers
+// right-aligned in tabular figures, zero shown as a grey dash.
+import { useMemo, type ReactNode } from 'react'
 import {
   computeAttack, computeDefense, computeGK, computeTeamStats,
   sumAttack, sumDefense, sumGK,
@@ -6,33 +11,29 @@ import {
   type AttackRow, type DefenseRow, type GKRow,
 } from '@/lib/stats/matchStats'
 import type { Event, Player } from '@/lib/db/schema'
+import { useT, type Text } from '@/lib/i18n/lang'
+import { T, ORIGIN_TEXT } from '@/lib/i18n/terms'
+import { Segmented } from '@/components/ui'
+
+type ViewMode = 'total' | 'average'
 
 // ─── View mode toggle ─────────────────────────────────────────────────────────
 
-export function ViewModeToggle({ mode, onChange }: { mode: 'total' | 'average'; onChange: (m: 'total' | 'average') => void }) {
+export function ViewModeToggle({ mode, onChange }: { mode: ViewMode; onChange: (m: ViewMode) => void }) {
+  const t = useT()
   return (
-    <div className="flex rounded-lg border border-gray-300 overflow-hidden text-xs">
-      <button
-        onClick={() => onChange('total')}
-        className={`px-3 py-1.5 font-medium transition-colors ${mode === 'total' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-      >
-        Heildartölur
-      </button>
-      <button
-        onClick={() => onChange('average')}
-        className={`px-3 py-1.5 font-medium transition-colors border-l border-gray-300 ${mode === 'average' ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'}`}
-      >
-        Meðaltal
-      </button>
-    </div>
+    <Segmented<ViewMode> value={mode} onChange={onChange} size="sm"
+      options={[{ v: 'total', label: t(T.totals) }, { v: 'average', label: t(T.perMatch) }]} />
   )
 }
 
 // ─── Table primitives ─────────────────────────────────────────────────────────
 
-export function Th({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+const GROUP_EDGE = 'border-l border-line'
+
+export function Th({ children, className = '' }: { children?: ReactNode; className?: string }) {
   return (
-    <th className={`px-2 py-1.5 text-center text-[10px] font-semibold text-gray-500 uppercase tracking-wide whitespace-nowrap border-r border-gray-200 ${className}`}>
+    <th className={`px-2 pt-1 pb-2 text-right text-[12px] font-normal text-muted whitespace-nowrap ${className}`}>
       {children}
     </th>
   )
@@ -40,87 +41,106 @@ export function Th({ children, className = '' }: { children: React.ReactNode; cl
 
 export function ThGroup({ label, colSpan }: { label: string; colSpan: number }) {
   return (
-    <th colSpan={colSpan} className="px-2 py-1 text-center text-[10px] font-bold text-gray-700 bg-gray-100 border-r border-gray-300 whitespace-nowrap">
+    <th colSpan={colSpan} className={`px-2 pt-2.5 pb-0.5 text-left text-[12px] font-medium text-ink whitespace-nowrap ${GROUP_EDGE}`}>
       {label}
     </th>
   )
 }
 
-export function Td({ children, className = '' }: { children: React.ReactNode; className?: string }) {
+export function Td({ children, className = '' }: { children: ReactNode; className?: string }) {
   return (
-    <td className={`px-2 py-1.5 text-center text-xs border-r border-gray-100 whitespace-nowrap ${className}`}>
+    <td className={`px-2 py-2 text-right whitespace-nowrap ${className}`}>
       {children}
     </td>
   )
 }
 
+const zero = (n: number) => (n > 0 ? 'text-ink' : 'text-[#9aa0a8]')
+
+function fmt(n: number, viewMode: ViewMode, matchCount: number) {
+  return viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
+}
+
 function TdGKPair({ saved, faced, va }: { saved: number; faced: number; va: (n: number) => number | string }) {
   return (
     <>
-      <Td className={saved > 0 ? 'text-green-700' : 'text-gray-300'}>{va(saved)}</Td>
-      <Td className="text-gray-500">{va(faced)}</Td>
-      <Td className="text-gray-500">{pct(saved, faced)}</Td>
+      <Td className={`${GROUP_EDGE} ${saved > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}`}>{va(saved)}</Td>
+      <Td className={zero(faced)}>{va(faced)}</Td>
+      <Td className="text-muted">{pct(saved, faced)}</Td>
     </>
   )
 }
 
 function TdTriple({ goals, shots, highlight = false, viewMode = 'total', matchCount = 1 }: {
   goals: number; shots: number; highlight?: boolean
-  viewMode?: 'total' | 'average'; matchCount?: number
+  viewMode?: ViewMode; matchCount?: number
 }) {
-  const dg = viewMode === 'average' ? (goals > 0 ? (goals / matchCount).toFixed(1) : '—') : v(goals)
-  const ds = viewMode === 'average' ? (shots > 0 ? (shots / matchCount).toFixed(1) : '—') : v(shots)
   return (
     <>
-      <Td className={goals > 0 ? (highlight ? 'text-green-700 font-bold' : 'text-green-700 font-semibold') : 'text-gray-300'}>{dg}</Td>
-      <Td className="text-gray-500">{ds}</Td>
-      <Td className={goals > 0 && shots > 0 ? 'text-gray-600' : 'text-gray-300'}>{pct(goals, shots)}</Td>
+      <Td className={`${GROUP_EDGE} ${goals > 0 ? (highlight ? 'text-ink font-semibold' : 'text-ink font-medium') : 'text-[#9aa0a8]'}`}>{fmt(goals, viewMode, matchCount)}</Td>
+      <Td className={zero(shots)}>{fmt(shots, viewMode, matchCount)}</Td>
+      <Td className="text-muted">{pct(goals, shots)}</Td>
     </>
   )
 }
 
+/** Sticky name and number columns, shared by every table. */
+function NameCells({ label, jersey, totals }: { label: string; jersey: number | null | undefined; totals: boolean }) {
+  const bg = totals ? 'bg-[#f5f6f8]' : 'bg-white group-hover:bg-[#f8f9fa]'
+  return (
+    <>
+      <td className={`sticky left-0 z-10 px-3 py-2 text-left font-medium text-ink min-w-[132px] max-w-[180px] truncate ${bg}`}>{label}</td>
+      <td className={`sticky left-[132px] z-10 px-2 py-2 text-right text-muted min-w-[36px] ${bg}`}>{jersey ?? '—'}</td>
+    </>
+  )
+}
+
+function HeadNameCells({ rowSpan = 1 }: { rowSpan?: number }) {
+  const t = useT()
+  return (
+    <>
+      <th rowSpan={rowSpan} className="sticky left-0 z-20 bg-white px-3 pb-2 text-left align-bottom text-[12px] font-normal text-muted min-w-[132px]">{t(T.name)}</th>
+      <th rowSpan={rowSpan} className="sticky left-[132px] z-20 bg-white px-2 pb-2 text-right align-bottom text-[12px] font-normal text-muted min-w-[36px]">#</th>
+    </>
+  )
+}
+
+const tableClass = 'text-[13px] border-collapse min-w-max num'
+const rowClass = (totals: boolean) => `group border-t ${totals ? 'border-[#d6dae1] bg-[#f5f6f8] font-semibold' : 'border-[#eef0f2] bg-white hover:bg-[#f8f9fa]'}`
+
 // ─── Team Stats table ─────────────────────────────────────────────────────────
 
-export function TeamStatsTable({
-  events,
-  trackedTeamId,
-  myTeamName,
-  opponentTeamName,
-}: {
+export function TeamStatsTable({ events, trackedTeamId, myTeamName, opponentTeamName }: {
   events: Event[]
   trackedTeamId: string
   myTeamName?: string
   opponentTeamName?: string
 }) {
+  const t = useT()
   const stats = useMemo(() => computeTeamStats(events, trackedTeamId), [events, trackedTeamId])
+  const rows = [
+    { name: myTeamName ?? t(T.team), goals: stats.myGoals, attacks: stats.myAttacks, shots: stats.myShots },
+    { name: opponentTeamName ?? t(T.opponent), goals: stats.opponentGoals, attacks: stats.opponentAttacks, shots: stats.opponentShots },
+  ]
   return (
-    <div className="px-2 pb-2">
-      <table className="text-xs border-collapse w-auto">
+    <div className="p-4">
+      <table className={tableClass}>
         <thead>
-          <tr className="bg-gray-100 border-b border-gray-300">
-            <th className="px-3 py-1.5 text-left text-[10px] font-bold text-gray-600 whitespace-nowrap border-r border-gray-200" />
-            <Th>Mörk</Th>
-            <Th>Fjöldi sókna</Th>
-            <Th>Skotnýting %</Th>
+          <tr>
+            <th className="px-3 pb-2 text-left text-[12px] font-normal text-muted min-w-[160px]">{t(T.team)}</th>
+            <Th>{t(T.goals)}</Th><Th>{t(T.shots)}</Th><Th>{t(T.attacks)}</Th><Th>{t(T.shootingPct)}</Th>
           </tr>
         </thead>
         <tbody>
-          <tr className="bg-white border-b border-gray-100">
-            <td className="px-3 py-1.5 text-xs font-semibold text-gray-700 border-r border-gray-200 whitespace-nowrap max-w-[120px] truncate">
-              {myTeamName ?? 'Liðið'}
-            </td>
-            <Td className={stats.myGoals > 0 ? 'text-green-700 font-bold' : 'text-gray-400'}>{stats.myGoals}</Td>
-            <Td className={stats.myAttacks > 0 ? 'text-gray-700' : 'text-gray-400'}>{stats.myAttacks > 0 ? stats.myAttacks : '—'}</Td>
-            <Td className={stats.myGoals > 0 ? 'text-gray-700 font-semibold' : 'text-gray-400'}>{pct(stats.myGoals, stats.myShots)}</Td>
-          </tr>
-          <tr className="bg-white border-b border-gray-100">
-            <td className="px-3 py-1.5 text-xs font-semibold text-gray-700 border-r border-gray-200 whitespace-nowrap max-w-[120px] truncate">
-              {opponentTeamName ?? 'Andstæðingur'}
-            </td>
-            <Td className={stats.opponentGoals > 0 ? 'text-red-600 font-bold' : 'text-gray-400'}>{stats.opponentGoals}</Td>
-            <Td className={stats.opponentAttacks > 0 ? 'text-gray-700' : 'text-gray-400'}>{stats.opponentAttacks > 0 ? stats.opponentAttacks : '—'}</Td>
-            <Td className={stats.opponentGoals > 0 ? 'text-gray-700' : 'text-gray-400'}>{pct(stats.opponentGoals, stats.opponentShots)}</Td>
-          </tr>
+          {rows.map((r, i) => (
+            <tr key={i} className={rowClass(false)}>
+              <td className="px-3 py-2.5 text-left font-medium max-w-[200px] truncate">{r.name}</td>
+              <Td className={`text-[15px] ${i === 0 && r.goals > 0 ? 'text-accent font-semibold' : 'font-medium'}`}>{r.goals}</Td>
+              <Td className={zero(r.shots)}>{r.shots || '—'}</Td>
+              <Td className={zero(r.attacks)}>{r.attacks > 0 ? r.attacks : '—'}</Td>
+              <Td className="text-muted">{pct(r.goals, r.shots)}</Td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </div>
@@ -129,24 +149,22 @@ export function TeamStatsTable({
 
 // ─── Attack table ─────────────────────────────────────────────────────────────
 
+const RANGE_GROUPS: Text[] = [T.total, T.penalty, T.wing, T.leftWing, T.rightWing, T.nineM, T.sevenEight, T.sixM, T.line,
+  T.fastBreak, T.secondWave, T.setPlay, T.inferiority, T.superiority, T.s7v6, T.s6v6]
+const ORIGIN_KEYS = ['left_wing', 'left_center', 'center', 'right_center', 'right_wing', 'line', 'other']
+
 function AtkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
   r: Omit<AttackRow, 'player'> & { player?: Player }; isTotals?: boolean
-  viewMode?: 'total' | 'average'; matchCount?: number
+  viewMode?: ViewMode; matchCount?: number
 }) {
-  const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
-  const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
-  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
+  const t = useT()
+  const va = (n: number) => fmt(n, viewMode, matchCount)
   const tdp = { viewMode, matchCount }
-  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
+  const label = r.player ? `${r.player.first_name} ${r.player.last_name}` : t(viewMode === 'average' ? T.average : T.total)
   return (
-    <tr className={`group border-b border-gray-100 ${bg}`}>
-      <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {rowLabel}
-      </td>
-      <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
-        {r.player?.jersey_number ?? '—'}
-      </td>
-      <TdTriple goals={r.goals} shots={r.shots} highlight={isTotals} {...tdp} />
+    <tr className={rowClass(isTotals)}>
+      <NameCells label={label} jersey={r.player?.jersey_number} totals={isTotals} />
+      <TdTriple goals={r.goals} shots={r.shots} highlight {...tdp} />
       <TdTriple goals={r.penGoals} shots={r.penShots} {...tdp} />
       <TdTriple goals={r.cornGoals} shots={r.cornShots} {...tdp} />
       <TdTriple goals={r.cornLeftGoals} shots={r.cornLeftShots} {...tdp} />
@@ -162,75 +180,49 @@ function AtkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
       <TdTriple goals={r.supGoals} shots={r.supShots} {...tdp} />
       <TdTriple goals={r.s76Goals} shots={r.s76Shots} {...tdp} />
       <TdTriple goals={r.s66Goals} shots={r.s66Shots} {...tdp} />
-      <Td className={r.chancesCreated > 0 ? 'text-blue-600 font-semibold' : 'text-gray-300'}>{va(r.chancesCreated)}</Td>
-      <Td className={r.assists > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.assists)}</Td>
-      <Td className={r.penaltyAssists > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.penaltyAssists)}</Td>
-      <Td className={r.drewPenalty > 0 ? 'text-blue-600' : 'text-gray-300'}>{va(r.drewPenalty)}</Td>
-      <Td className={r.turnovers > 0 ? 'text-orange-600 font-semibold' : 'text-gray-300'}>{va(r.turnovers)}</Td>
-      <Td className={r.offensiveRebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.offensiveRebounds)}</Td>
-      <Td className={r.drewSuspension > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.drewSuspension)}</Td>
-      <TdTriple goals={r.origLeftWingGoals}   shots={r.origLeftWingShots}   {...tdp} />
-      <TdTriple goals={r.origLeftCenterGoals} shots={r.origLeftCenterShots} {...tdp} />
-      <TdTriple goals={r.origCenterGoals}     shots={r.origCenterShots}     {...tdp} />
+      <Td className={`${GROUP_EDGE} ${zero(r.chancesCreated)}`}>{va(r.chancesCreated)}</Td>
+      <Td className={zero(r.assists)}>{va(r.assists)}</Td>
+      <Td className={zero(r.penaltyAssists)}>{va(r.penaltyAssists)}</Td>
+      <Td className={zero(r.drewPenalty)}>{va(r.drewPenalty)}</Td>
+      <Td className={zero(r.turnovers)}>{va(r.turnovers)}</Td>
+      <Td className={zero(r.offensiveRebounds)}>{va(r.offensiveRebounds)}</Td>
+      <Td className={zero(r.drewSuspension)}>{va(r.drewSuspension)}</Td>
+      <TdTriple goals={r.origLeftWingGoals}    shots={r.origLeftWingShots}    {...tdp} />
+      <TdTriple goals={r.origLeftCenterGoals}  shots={r.origLeftCenterShots}  {...tdp} />
+      <TdTriple goals={r.origCenterGoals}      shots={r.origCenterShots}      {...tdp} />
       <TdTriple goals={r.origRightCenterGoals} shots={r.origRightCenterShots} {...tdp} />
-      <TdTriple goals={r.origRightWingGoals}  shots={r.origRightWingShots}  {...tdp} />
-      <TdTriple goals={r.origLineGoals}       shots={r.origLineShots}       {...tdp} />
-      <TdTriple goals={r.origOtherGoals}      shots={r.origOtherShots}      {...tdp} />
-      <TdTriple goals={r.handUpGoals}         shots={r.handUpShots}         {...tdp} />
-      <TdTriple goals={r.handDownGoals}       shots={r.handDownShots}       {...tdp} />
+      <TdTriple goals={r.origRightWingGoals}   shots={r.origRightWingShots}   {...tdp} />
+      <TdTriple goals={r.origLineGoals}        shots={r.origLineShots}        {...tdp} />
+      <TdTriple goals={r.origOtherGoals}       shots={r.origOtherShots}       {...tdp} />
+      <TdTriple goals={r.handUpGoals}          shots={r.handUpShots}          {...tdp} />
+      <TdTriple goals={r.handDownGoals}        shots={r.handDownShots}        {...tdp} />
     </tr>
   )
 }
 
 export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
-  rows: AttackRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+  rows: AttackRow[]; matchCount?: number; viewMode?: ViewMode
 }) {
+  const t = useT()
   const totals = useMemo(() => sumAttack(rows), [rows])
+  const triple = (k: string) => [<Th key={`${k}g`}>{t(T.goalsShort)}</Th>, <Th key={`${k}s`}>{t(T.shots)}</Th>, <Th key={`${k}p`}>%</Th>]
   return (
     <div className="overflow-x-auto">
-      <table className="text-xs border-collapse min-w-max">
+      <table className={tableClass}>
         <thead>
-          <tr className="border-b-2 border-gray-300">
-            <th className="sticky left-0 z-20 bg-gray-50 px-3 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[110px]">Nafn</th>
-            <th className="sticky left-[110px] z-20 bg-gray-50 px-2 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[36px]">#</th>
-            <ThGroup label="Samtals" colSpan={3} />
-            <ThGroup label="Víti" colSpan={3} />
-            <ThGroup label="Horn" colSpan={3} />
-            <ThGroup label="Vinstra Horn" colSpan={3} />
-            <ThGroup label="Hægra Horn" colSpan={3} />
-            <ThGroup label="9m+" colSpan={3} />
-            <ThGroup label="7–8m" colSpan={3} />
-            <ThGroup label="6m" colSpan={3} />
-            <ThGroup label="Lína" colSpan={3} />
-            <ThGroup label="Hraðaupphlaup" colSpan={3} />
-            <ThGroup label="Seinni bylgja" colSpan={3} />
-            <ThGroup label="Uppstilltur leikur" colSpan={3} />
-            <ThGroup label="Undirtala" colSpan={3} />
-            <ThGroup label="Yfirtala" colSpan={3} />
-            <ThGroup label="7á6" colSpan={3} />
-            <ThGroup label="6á6" colSpan={3} />
-            <ThGroup label="Annað" colSpan={7} />
-            <ThGroup label="Vinstra Horn (uppruni)" colSpan={3} />
-            <ThGroup label="Vinstri Skytta" colSpan={3} />
-            <ThGroup label="Vinstri Miðja" colSpan={3} />
-            <ThGroup label="Hægri Miðja" colSpan={3} />
-            <ThGroup label="Hægri Skytta" colSpan={3} />
-            <ThGroup label="Hægra Horn (uppruni)" colSpan={3} />
-            <ThGroup label="Annað (Árás)" colSpan={3} />
-            <ThGroup label="Höndin uppi" colSpan={3} />
-            <ThGroup label="Höndin niðri" colSpan={3} />
+          <tr>
+            <HeadNameCells rowSpan={2} />
+            {RANGE_GROUPS.map((g, i) => <ThGroup key={i} label={t(g)} colSpan={3} />)}
+            <ThGroup label={t(T.other)} colSpan={7} />
+            {ORIGIN_KEYS.map(k => <ThGroup key={k} label={`${t(ORIGIN_TEXT[k])}${k === 'left_wing' || k === 'line' ? ` (${t(T.origin)})` : ''}`} colSpan={3} />)}
+            <ThGroup label={t(T.handUp)} colSpan={3} />
+            <ThGroup label={t(T.handDown)} colSpan={3} />
           </tr>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
-            <th className="sticky left-[110px] z-20 bg-gray-50 border-r border-gray-200" />
-            {Array.from({ length: 16 }).map((_, i) => (
-              <><Th key={`g${i}`}>M</Th><Th key={`s${i}`}>Skot</Th><Th key={`p${i}`}>%</Th></>
-            ))}
-            <Th>Sk.Færi</Th><Th>Stoð</Th><Th>Vítas</Th><Th>Fisk.V</Th>
-            <Th>Tap</Th><Th>Frákast</Th><Th>2mín fisk</Th>
-            {Array.from({ length: 9 }).map((_, i) => (
-              <><Th key={`om${i}`}>M</Th><Th key={`os${i}`}>Skot</Th><Th key={`op${i}`}>%</Th></>
-            ))}
+          <tr className="border-b border-line">
+            {RANGE_GROUPS.flatMap((_, i) => triple(`r${i}`))}
+            <Th className={GROUP_EDGE}>{t(T.chancesCreated)}</Th><Th>{t(T.assists)}</Th><Th>{t(T.penaltyAssists)}</Th><Th>{t(T.drewPenalty)}</Th>
+            <Th>{t(T.turnovers)}</Th><Th>{t(T.offRebounds)}</Th><Th>{t(T.drewSuspension)}</Th>
+            {[...ORIGIN_KEYS, 'up', 'down'].flatMap(k => triple(`o${k}`))}
           </tr>
         </thead>
         <tbody>
@@ -242,57 +234,58 @@ export function AttackTable({ rows, matchCount = 1, viewMode = 'total' }: {
   )
 }
 
-// ─── Defense table ────────────────────────────────────────────────────────────
+// ─── Defence table ────────────────────────────────────────────────────────────
 
 function DefRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
   r: Omit<DefenseRow, 'player'> & { player?: Player }; isTotals?: boolean
-  viewMode?: 'total' | 'average'; matchCount?: number
+  viewMode?: ViewMode; matchCount?: number
 }) {
-  const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
-  const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
-  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
-  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
+  const t = useT()
+  const va = (n: number) => fmt(n, viewMode, matchCount)
+  const label = r.player ? `${r.player.first_name} ${r.player.last_name}` : t(viewMode === 'average' ? T.average : T.total)
+  const neg = (n: number) => (n > 0 ? 'text-[#c4242a] font-medium' : 'text-[#9aa0a8]')
   return (
-    <tr className={`group border-b border-gray-100 ${bg}`}>
-      <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {rowLabel}
-      </td>
-      <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
-        {r.player?.jersey_number ?? '—'}
-      </td>
-      <Td>{va(r.duels)}</Td>
-      <Td className={r.duelsWon > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.duelsWon)}</Td>
-      <Td>{pct(r.duelsWon, r.duels)}</Td>
-      <Td className={r.highContact > 0 ? 'text-orange-600' : 'text-gray-300'}>{va(r.highContact)}</Td>
-      <Td className={r.freekick > 0 ? 'text-orange-500' : 'text-gray-300'}>{va(r.freekick)}</Td>
-      <Td className={r.interceptions > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.interceptions)}</Td>
-      <Td className={r.blocks > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.blocks)}</Td>
-      <Td className={r.rebounds > 0 ? 'text-gray-700' : 'text-gray-300'}>{va(r.rebounds)}</Td>
-      <Td className={r.penaltyAwarded > 0 ? 'text-red-600 font-bold' : 'text-gray-300'}>{va(r.penaltyAwarded)}</Td>
-      <Td className={r.yellowCards > 0 ? 'text-yellow-600 font-semibold' : 'text-gray-300'}>{va(r.yellowCards)}</Td>
-      <Td className={r.suspensions2min > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{va(r.suspensions2min)}</Td>
-      <Td className={r.redCards > 0 ? 'text-red-700 font-bold' : 'text-gray-300'}>{va(r.redCards)}</Td>
-      <Td className={r.protest > 0 ? 'text-purple-600' : 'text-gray-300'}>{va(r.protest)}</Td>
-      <Td className={r.drewOffensiveFoul > 0 ? 'text-green-600' : 'text-gray-300'}>{va(r.drewOffensiveFoul)}</Td>
+    <tr className={rowClass(isTotals)}>
+      <NameCells label={label} jersey={r.player?.jersey_number} totals={isTotals} />
+      <Td className={`${GROUP_EDGE} ${zero(r.duels)}`}>{va(r.duels)}</Td>
+      <Td className={r.duelsWon > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}>{va(r.duelsWon)}</Td>
+      <Td className="text-muted">{pct(r.duelsWon, r.duels)}</Td>
+      <Td className={`${GROUP_EDGE} ${zero(r.highContact)}`}>{va(r.highContact)}</Td>
+      <Td className={zero(r.freekick)}>{va(r.freekick)}</Td>
+      <Td className={r.interceptions > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}>{va(r.interceptions)}</Td>
+      <Td className={r.blocks > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}>{va(r.blocks)}</Td>
+      <Td className={zero(r.rebounds)}>{va(r.rebounds)}</Td>
+      <Td className={zero(r.penaltyAwarded)}>{va(r.penaltyAwarded)}</Td>
+      <Td className={`${GROUP_EDGE} ${zero(r.yellowCards)}`}>{va(r.yellowCards)}</Td>
+      <Td className={neg(r.suspensions2min)}>{va(r.suspensions2min)}</Td>
+      <Td className={neg(r.redCards)}>{va(r.redCards)}</Td>
+      <Td className={zero(r.protest)}>{va(r.protest)}</Td>
+      <Td className={`${GROUP_EDGE} ${zero(r.drewOffensiveFoul)}`}>{va(r.drewOffensiveFoul)}</Td>
     </tr>
   )
 }
 
 export function DefenseTable({ rows, matchCount = 1, viewMode = 'total' }: {
-  rows: DefenseRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+  rows: DefenseRow[]; matchCount?: number; viewMode?: ViewMode
 }) {
+  const t = useT()
   const totals = useMemo(() => sumDefense(rows), [rows])
   return (
     <div className="overflow-x-auto">
-      <table className="text-xs border-collapse min-w-max">
+      <table className={tableClass}>
         <thead>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="sticky left-0 z-20 bg-gray-50 px-3 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[110px]">Nafn</th>
-            <th className="sticky left-[110px] z-20 bg-gray-50 px-2 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[36px]">#</th>
-            <Th>Árás 1á1</Th><Th>Vinnur</Th><Th>1á1 %</Th>
-            <Th>Hár kontakt</Th><Th>Fríköst</Th><Th>Stolinn</Th><Th>Blokk</Th>
-            <Th>Fráköst</Th><Th>Víti á</Th><Th>Gult</Th><Th>2 mín</Th>
-            <Th>Rautt</Th><Th>Værukærð</Th><Th>Fisk. sóknarbrot</Th>
+          <tr>
+            <HeadNameCells rowSpan={2} />
+            <ThGroup label={t(T.duels)} colSpan={3} />
+            <ThGroup label={t(T.defence)} colSpan={6} />
+            <ThGroup label={t({ en: 'Discipline', is: 'Agi' })} colSpan={4} />
+            <ThGroup label={t(T.other)} colSpan={1} />
+          </tr>
+          <tr className="border-b border-line">
+            <Th className={GROUP_EDGE}>{t(T.duels)}</Th><Th>{t(T.duelsWon)}</Th><Th>%</Th>
+            <Th className={GROUP_EDGE}>{t(T.highContact)}</Th><Th>{t(T.freeThrows)}</Th><Th>{t(T.steals)}</Th><Th>{t(T.blocks)}</Th>
+            <Th>{t(T.rebounds)}</Th><Th>{t(T.penConceded)}</Th>
+            <Th className={GROUP_EDGE}>{t(T.yellow)}</Th><Th>{t(T.twoMin)}</Th><Th>{t(T.red)}</Th><Th>{t(T.protest)}</Th><Th className={GROUP_EDGE}>{t(T.drewOffFoul)}</Th>
           </tr>
         </thead>
         <tbody>
@@ -304,128 +297,83 @@ export function DefenseTable({ rows, matchCount = 1, viewMode = 'total' }: {
   )
 }
 
-// ─── GK table ─────────────────────────────────────────────────────────────────
+// ─── Goalkeeping table ────────────────────────────────────────────────────────
+
+const GK_GROUPS: Text[] = [T.total, T.penalty, T.wing, T.leftWing, T.rightWing, T.nineM, T.sevenEight, T.sixM, T.line,
+  T.fastBreak, T.secondWave, T.inferiority, T.superiority, T.s6v7]
 
 function GkRow({ r, isTotals = false, viewMode = 'total', matchCount = 1 }: {
   r: Omit<GKRow, 'player'> & { player?: Player }; isTotals?: boolean
-  viewMode?: 'total' | 'average'; matchCount?: number
+  viewMode?: ViewMode; matchCount?: number
 }) {
-  const bg = isTotals ? 'bg-gray-50' : 'bg-white hover:bg-gray-50'
-  const nameBg = isTotals ? 'bg-gray-50' : 'bg-white group-hover:bg-gray-50'
-  const va = (n: number) => viewMode === 'average' ? (n > 0 ? (n / matchCount).toFixed(1) : '—') : v(n)
-  const rowLabel = r.player ? `${r.player.first_name} ${r.player.last_name}` : (viewMode === 'average' ? 'Meðaltal' : 'Samtals')
+  const t = useT()
+  const va = (n: number) => fmt(n, viewMode, matchCount)
+  const label = r.player ? `${r.player.first_name} ${r.player.last_name}` : t(viewMode === 'average' ? T.average : T.total)
   return (
-    <tr className={`group border-b border-gray-100 ${bg}`}>
-      <td className={`sticky left-0 z-10 px-3 py-1.5 text-xs font-medium text-gray-800 border-r border-gray-200 min-w-[110px] ${nameBg}`}>
-        {rowLabel}
-      </td>
-      <td className={`sticky left-[110px] z-10 px-2 py-1.5 text-center text-xs text-gray-500 border-r border-gray-200 min-w-[36px] ${nameBg}`}>
-        {r.player?.jersey_number ?? '—'}
-      </td>
-      <Td className={r.saves > 0 ? 'text-green-700 font-bold' : 'text-gray-300'}>{va(r.saves)}</Td>
-      <Td className="text-gray-600">{va(r.shotsFaced)}</Td>
-      <Td className={r.saves / (r.shotsFaced || 1) >= 0.4 ? 'text-green-700 font-semibold' : 'text-gray-500'}>{pct(r.saves, r.shotsFaced)}</Td>
-      <Td className={r.savedPen > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedPen)}</Td>
-      <Td className="text-gray-500">{va(r.facedPen)}</Td>
-      <Td className="text-gray-500">{pct(r.savedPen, r.facedPen)}</Td>
-      <Td className={r.savedCorn > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedCorn)}</Td>
-      <Td className="text-gray-500">{va(r.facedCorn)}</Td>
-      <Td className="text-gray-500">{pct(r.savedCorn, r.facedCorn)}</Td>
+    <tr className={rowClass(isTotals)}>
+      <NameCells label={label} jersey={r.player?.jersey_number} totals={isTotals} />
+      <Td className={`${GROUP_EDGE} ${r.saves > 0 ? 'text-ink font-semibold' : 'text-[#9aa0a8]'}`}>{va(r.saves)}</Td>
+      <Td className={zero(r.shotsFaced)}>{va(r.shotsFaced)}</Td>
+      <Td className={r.shotsFaced > 0 && r.saves / r.shotsFaced >= 0.4 ? 'text-accent font-medium' : 'text-muted'}>{pct(r.saves, r.shotsFaced)}</Td>
+      <TdGKPair saved={r.savedPen} faced={r.facedPen} va={va} />
+      <TdGKPair saved={r.savedCorn} faced={r.facedCorn} va={va} />
       <TdGKPair saved={r.savedCornLeft} faced={r.facedCornLeft} va={va} />
       <TdGKPair saved={r.savedCornRight} faced={r.facedCornRight} va={va} />
-      <Td className={r.savedNineM > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedNineM)}</Td>
-      <Td className="text-gray-500">{va(r.facedNineM)}</Td>
-      <Td className="text-gray-500">{pct(r.savedNineM, r.facedNineM)}</Td>
-      <Td className={r.savedS78 > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS78)}</Td>
-      <Td className="text-gray-500">{va(r.facedS78)}</Td>
-      <Td className="text-gray-500">{pct(r.savedS78, r.facedS78)}</Td>
-      <Td className={r.savedS6m > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS6m)}</Td>
-      <Td className="text-gray-500">{va(r.facedS6m)}</Td>
-      <Td className="text-gray-500">{pct(r.savedS6m, r.facedS6m)}</Td>
-      <Td className={r.savedLine > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedLine)}</Td>
-      <Td className="text-gray-500">{va(r.facedLine)}</Td>
-      <Td className="text-gray-500">{pct(r.savedLine, r.facedLine)}</Td>
-      <Td className={r.savedFb > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedFb)}</Td>
-      <Td className="text-gray-500">{va(r.facedFb)}</Td>
-      <Td className="text-gray-500">{pct(r.savedFb, r.facedFb)}</Td>
-      <Td className={r.savedSw > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedSw)}</Td>
-      <Td className="text-gray-500">{va(r.facedSw)}</Td>
-      <Td className="text-gray-500">{pct(r.savedSw, r.facedSw)}</Td>
-      <Td className={r.savedInf > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedInf)}</Td>
-      <Td className="text-gray-500">{va(r.facedInf)}</Td>
-      <Td className="text-gray-500">{pct(r.savedInf, r.facedInf)}</Td>
-      <Td className={r.savedSup > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedSup)}</Td>
-      <Td className="text-gray-500">{va(r.facedSup)}</Td>
-      <Td className="text-gray-500">{pct(r.savedSup, r.facedSup)}</Td>
-      <Td className={r.savedS67 > 0 ? 'text-green-700' : 'text-gray-300'}>{va(r.savedS67)}</Td>
-      <Td className="text-gray-500">{va(r.facedS67)}</Td>
-      <Td className="text-gray-500">{pct(r.savedS67, r.facedS67)}</Td>
-      <Td className={r.emptyPhase > 0 ? 'text-red-500 font-semibold' : 'text-gray-300'}>{va(r.emptyPhase)}</Td>
-      <Td className={r.positiveResponse > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}>{va(r.positiveResponse)}</Td>
-      <TdGKPair saved={r.origLeftWingSaves}   faced={r.origLeftWingFaced}   va={va} />
-      <TdGKPair saved={r.origLeftCenterSaves} faced={r.origLeftCenterFaced} va={va} />
-      <TdGKPair saved={r.origCenterSaves}     faced={r.origCenterFaced}     va={va} />
+      <TdGKPair saved={r.savedNineM} faced={r.facedNineM} va={va} />
+      <TdGKPair saved={r.savedS78} faced={r.facedS78} va={va} />
+      <TdGKPair saved={r.savedS6m} faced={r.facedS6m} va={va} />
+      <TdGKPair saved={r.savedLine} faced={r.facedLine} va={va} />
+      <TdGKPair saved={r.savedFb} faced={r.facedFb} va={va} />
+      <TdGKPair saved={r.savedSw} faced={r.facedSw} va={va} />
+      <TdGKPair saved={r.savedInf} faced={r.facedInf} va={va} />
+      <TdGKPair saved={r.savedSup} faced={r.facedSup} va={va} />
+      <TdGKPair saved={r.savedS67} faced={r.facedS67} va={va} />
+      <Td className={`${GROUP_EDGE} ${zero(r.emptyPhase)}`}>{va(r.emptyPhase)}</Td>
+      <Td className={zero(r.positiveResponse)}>{va(r.positiveResponse)}</Td>
+      <TdGKPair saved={r.origLeftWingSaves}    faced={r.origLeftWingFaced}    va={va} />
+      <TdGKPair saved={r.origLeftCenterSaves}  faced={r.origLeftCenterFaced}  va={va} />
+      <TdGKPair saved={r.origCenterSaves}      faced={r.origCenterFaced}      va={va} />
       <TdGKPair saved={r.origRightCenterSaves} faced={r.origRightCenterFaced} va={va} />
-      <TdGKPair saved={r.origRightWingSaves}  faced={r.origRightWingFaced}  va={va} />
-      <TdGKPair saved={r.origLineSaves}       faced={r.origLineFaced}       va={va} />
-      <TdGKPair saved={r.origOtherSaves}      faced={r.origOtherFaced}      va={va} />
-      <TdGKPair saved={r.handUpSaves}         faced={r.handUpFaced}         va={va} />
-      <TdGKPair saved={r.handDownSaves}       faced={r.handDownFaced}       va={va} />
+      <TdGKPair saved={r.origRightWingSaves}   faced={r.origRightWingFaced}   va={va} />
+      <TdGKPair saved={r.origLineSaves}        faced={r.origLineFaced}        va={va} />
+      <TdGKPair saved={r.origOtherSaves}       faced={r.origOtherFaced}       va={va} />
+      <TdGKPair saved={r.handUpSaves}          faced={r.handUpFaced}          va={va} />
+      <TdGKPair saved={r.handDownSaves}        faced={r.handDownFaced}        va={va} />
     </tr>
   )
 }
 
 export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
-  rows: GKRow[]; matchCount?: number; viewMode?: 'total' | 'average'
+  rows: GKRow[]; matchCount?: number; viewMode?: ViewMode
 }) {
+  const t = useT()
   const totals = useMemo(() => sumGK(rows), [rows])
 
   if (rows.length === 0) {
-    return <p className="text-center text-gray-400 text-sm py-12">Engir markmenn á liðinu</p>
+    return (
+      <p className="m-4 text-[14px] text-muted border border-dashed border-[#cfd4db] rounded-lg px-3 py-2.5">
+        {t({ en: 'No goalkeepers on this roster.', is: 'Engir markmenn á leikmannalistanum.' })}
+      </p>
+    )
   }
 
+  const triple = (k: string) => [<Th key={`${k}s`}>{t(T.saves)}</Th>, <Th key={`${k}f`}>{t(T.faced)}</Th>, <Th key={`${k}p`}>%</Th>]
   return (
     <div className="overflow-x-auto">
-      <table className="text-xs border-collapse min-w-max">
+      <table className={tableClass}>
         <thead>
-          <tr className="border-b-2 border-gray-300">
-            <th className="sticky left-0 z-20 bg-gray-50 px-3 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[110px]">Nafn</th>
-            <th className="sticky left-[110px] z-20 bg-gray-50 px-2 py-1.5 text-center text-[10px] font-bold text-gray-600 border-r border-gray-200 min-w-[36px]">#</th>
-            <ThGroup label="Samtals" colSpan={3} />
-            <ThGroup label="Víti" colSpan={3} />
-            <ThGroup label="Horn" colSpan={3} />
-            <ThGroup label="Vinstra Horn" colSpan={3} />
-            <ThGroup label="Hægra Horn" colSpan={3} />
-            <ThGroup label="9m+" colSpan={3} />
-            <ThGroup label="7–8m" colSpan={3} />
-            <ThGroup label="6m" colSpan={3} />
-            <ThGroup label="Lína" colSpan={3} />
-            <ThGroup label="Hraðaupphlaup" colSpan={3} />
-            <ThGroup label="Seinni bylgja" colSpan={3} />
-            <ThGroup label="Undirtala" colSpan={3} />
-            <ThGroup label="Yfirtala" colSpan={3} />
-            <ThGroup label="6á7" colSpan={3} />
-            <ThGroup label="Annað" colSpan={2} />
-            <ThGroup label="Vinstra Horn (uppruni)" colSpan={3} />
-            <ThGroup label="Vinstri Skytta" colSpan={3} />
-            <ThGroup label="Vinstri Miðja" colSpan={3} />
-            <ThGroup label="Hægri Miðja" colSpan={3} />
-            <ThGroup label="Hægri Skytta" colSpan={3} />
-            <ThGroup label="Hægra Horn (uppruni)" colSpan={3} />
-            <ThGroup label="Annað (Árás)" colSpan={3} />
-            <ThGroup label="Höndin uppi" colSpan={3} />
-            <ThGroup label="Höndin niðri" colSpan={3} />
+          <tr>
+            <HeadNameCells rowSpan={2} />
+            {GK_GROUPS.map((g, i) => <ThGroup key={i} label={t(g)} colSpan={3} />)}
+            <ThGroup label={t(T.other)} colSpan={2} />
+            {ORIGIN_KEYS.map(k => <ThGroup key={k} label={`${t(ORIGIN_TEXT[k])}${k === 'left_wing' || k === 'line' ? ` (${t(T.origin)})` : ''}`} colSpan={3} />)}
+            <ThGroup label={t(T.handUp)} colSpan={3} />
+            <ThGroup label={t(T.handDown)} colSpan={3} />
           </tr>
-          <tr className="border-b border-gray-200 bg-gray-50">
-            <th className="sticky left-0 z-20 bg-gray-50 border-r border-gray-200" />
-            <th className="sticky left-[110px] z-20 bg-gray-50 border-r border-gray-200" />
-            {Array.from({ length: 14 }).map((_, i) => (
-              <><Th key={`sv${i}`}>Varin</Th><Th key={`sf${i}`}>Fjöldi</Th><Th key={`sp${i}`}>%</Th></>
-            ))}
-            <Th>Tóm fasi</Th><Th>Jákv. viðbr.</Th>
-            {Array.from({ length: 9 }).map((_, i) => (
-              <><Th key={`gkos${i}`}>Varin</Th><Th key={`gkof${i}`}>Fjöldi</Th><Th key={`gkop${i}`}>%</Th></>
-            ))}
+          <tr className="border-b border-line">
+            {GK_GROUPS.flatMap((_, i) => triple(`g${i}`))}
+            <Th className={GROUP_EDGE}>{t(T.emptyPhase)}</Th><Th>{t(T.positiveResponse)}</Th>
+            {[...ORIGIN_KEYS, 'up', 'down'].flatMap(k => triple(`o${k}`))}
           </tr>
         </thead>
         <tbody>
@@ -439,12 +387,7 @@ export function GKTable({ rows, matchCount = 1, viewMode = 'total' }: {
 
 // ─── Convenience: compute + render all three tables ───────────────────────────
 
-export function StatsPanel({
-  events,
-  players,
-  trackedTeamId,
-  tab,
-}: {
+export function StatsPanel({ events, players, trackedTeamId, tab }: {
   events: Event[]
   players: Player[]
   trackedTeamId: string

@@ -25,11 +25,11 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Handbolti Stats',
-        short_name: 'Handbolti',
+        name: 'Handball Stats',
+        short_name: 'Handball Stats',
         description: 'Live handball match statistics',
-        theme_color: '#1e3a5f',
-        background_color: '#ffffff',
+        theme_color: '#eef0f3',
+        background_color: '#eef0f3',
         display: 'standalone',
         orientation: 'landscape',
         icons: [

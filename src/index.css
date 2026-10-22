@@ -1,12 +1,27 @@
 @import "tailwindcss";
 
+/* Brand tokens (Handball Stats / Handboltatölfræði) — shared by the landing
+   page and the app. Cobalt goes on the one primary action and on data only. */
+@theme {
+  --font-sans: 'Jost Variable', 'Jost', system-ui, sans-serif;
+  --color-ground: #eef0f3;
+  --color-surface: #e2e5ea;
+  --color-ink: #0b0c0e;
+  --color-muted: #5d6470;
+  --color-line: #e3e6ea;
+  --color-accent: #1f2de6;
+  --color-accent-strong: #1824c0;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
+  background: var(--color-ground);
+  color: var(--color-ink);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   touch-action: manipulation;
@@ -17,7 +32,16 @@ body {
   min-height: 100svh;
 }
 
+/* Tabular figures wherever numbers line up or update */
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
 /* Prevent double-tap zoom on tablet */
 button, a {
   touch-action: manipulation;
 }
+
+/* Sign-in stage: a logged event slides in; the goal zone it hit pops */
+@keyframes hs-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+@keyframes hs-pop { 0% { transform: scale(0.86); } 100% { transform: none; } }

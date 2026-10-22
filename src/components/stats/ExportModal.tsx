@@ -4,6 +4,9 @@ import type { MatchWithTeams } from '@/lib/supabase/dashboardQueries'
 import { buildCSV, buildRawCSV, downloadCSV, type ExportStatsType, type RawMatchInfo } from '@/lib/stats/exportCsv'
 import { MinuteInput } from './MinuteFilter'
 import type { MinuteRange } from './MinuteFilter'
+import { useT, useLang } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
+import { Button } from '@/components/ui'
 
 interface Props {
   onClose: () => void
@@ -29,11 +32,11 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
   )
 
   function togglePlayer(id: string) {
-    setSelectedPlayerIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    setSelectedPlayerIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
   }
 
   function toggleMatch(id: string) {
-    setSelectedMatchIds(prev => { const s = new Set(prev); s.has(id) ? s.delete(id) : s.add(id); return s })
+    setSelectedMatchIds(prev => { const s = new Set(prev); if (s.has(id)) s.delete(id); else s.add(id); return s })
   }
 
   function handleDownload() {
@@ -100,100 +103,77 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
     onClose()
   }
 
+  const t = useT()
+  const lang = useLang(st => st.lang)
+  const linkBtn = 'text-[13px] text-muted hover:text-ink underline underline-offset-4 decoration-transparent hover:decoration-current transition-colors'
+  const sectionLabel = 'text-[14px] font-medium'
+  const listBox = 'border border-line rounded-lg divide-y divide-[#eef0f2] overflow-y-auto'
+  const check = 'w-4 h-4 accent-[#111214]'
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-200">
-          <h2 className="text-base font-bold text-gray-900">Hlaða niður CSV</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="dialog" aria-modal="true" aria-labelledby="export-h">
+      <div className="bg-white rounded-xl shadow-[0_24px_48px_rgba(0,0,0,0.22)] w-full max-w-md max-h-[90vh] flex flex-col overscroll-contain">
+        <div className="flex items-center justify-between px-5 py-4 border-b border-line">
+          <h2 id="export-h" className="text-[18px] font-semibold">{t({ en: 'Export to CSV', is: 'Sækja CSV' })}</h2>
+          <button type="button" onClick={onClose} aria-label={t(T.close)} className="w-8 h-8 rounded-md text-muted hover:text-ink hover:bg-[#f5f6f8] flex items-center justify-center">
+            <svg width="16" height="16" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
+          </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
-
-          {/* Stats type */}
-          <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tegund útflutnings</p>
+        <div className="flex-1 overflow-y-auto px-5 py-5 space-y-6">
+          <section className="space-y-2">
+            <p className={sectionLabel}>{t({ en: 'What to export', is: 'Hvað á að sækja' })}</p>
             <div className="grid grid-cols-2 gap-2">
               {([
-                { id: 'attack', label: 'Sókn' },
-                { id: 'defense', label: 'Vörn' },
-                { id: 'gk', label: 'Markvörður' },
-                { id: 'raw', label: 'Öll gögn (raw)' },
-              ] as { id: ExportStatsType; label: string }[]).map(t => (
+                { id: 'attack', label: t(T.attack) },
+                { id: 'defense', label: t(T.defence) },
+                { id: 'gk', label: t(T.goalkeeper) },
+                { id: 'raw', label: t({ en: 'Every event (raw)', is: 'Öll gögn (raw)' }) },
+              ] as { id: ExportStatsType; label: string }[]).map(o => (
                 <button
-                  key={t.id}
-                  onClick={() => { setStatsType(t.id); setSelectedPlayerIds(new Set()) }}
-                  className={`py-2 rounded-lg text-sm font-semibold border transition-colors ${
-                    statsType === t.id
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+                  key={o.id}
+                  type="button"
+                  aria-pressed={statsType === o.id}
+                  onClick={() => { setStatsType(o.id); setSelectedPlayerIds(new Set()) }}
+                  className={`h-10 rounded-md text-[14px] font-medium border transition-colors ${
+                    statsType === o.id ? 'bg-[#111214] text-white border-[#111214]' : 'bg-white text-ink border-[#cdd2d9] hover:border-ink'
                   }`}
                 >
-                  {t.label}
+                  {o.label}
                 </button>
               ))}
             </div>
             {statsType === 'raw' && (
-              <p className="text-xs text-gray-400 mt-2">
-                Flytur út alla atburði sem röðir — leikur, mínúta, tegund, leikmaður, skotsvæði, o.fl. Hentar til greiningar í Excel eða Python.
+              <p className="text-[13px] text-muted">
+                {t({ en: 'One row per event: match, minute, type, player, zone and more. Made for Excel or Python.', is: 'Ein lína á hvern atburð: leikur, mínúta, tegund, leikmaður, svæði o.fl. Hentar til greiningar í Excel eða Python.' })}
               </p>
             )}
           </section>
 
-          {/* Minute range */}
-          <section>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Tímabil (mínútur)</p>
-            <div className="flex items-center gap-3">
-              <MinuteInput
-                label="Frá"
-                value={minuteRange.from}
-                onChange={v => setMinuteRange(r => ({ ...r, from: v }))}
-              />
-              <span className="text-gray-400">–</span>
-              <MinuteInput
-                label="Til"
-                value={minuteRange.to}
-                onChange={v => setMinuteRange(r => ({ ...r, to: v }))}
-              />
+          <section className="space-y-2">
+            <p className={sectionLabel}>{t(T.minutes)}</p>
+            <div className="flex flex-wrap items-center gap-3">
+              <MinuteInput label={t(T.from)} value={minuteRange.from} onChange={v => setMinuteRange(r => ({ ...r, from: v }))} />
+              <MinuteInput label={t(T.to)} value={minuteRange.to} onChange={v => setMinuteRange(r => ({ ...r, to: v }))} />
               {(minuteRange.from !== null || minuteRange.to !== null) && (
-                <button
-                  onClick={() => setMinuteRange({ from: null, to: null })}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Hreinsa
-                </button>
+                <button type="button" onClick={() => setMinuteRange({ from: null, to: null })} className={linkBtn}>{t(T.clear)}</button>
               )}
             </div>
           </section>
 
-          {/* Players — hidden in raw mode */}
-          {statsType !== 'raw' && <section>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-                {statsType === 'gk' ? 'Markmenn' : 'Leikmenn'}
-              </p>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => setSelectedPlayerIds(new Set())}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Allir
-                </button>
-                <span className="text-gray-300">|</span>
-                <button
-                  onClick={() => setSelectedPlayerIds(new Set(relevantPlayers.map(p => p.id)))}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Velja alla
-                </button>
+          {statsType !== 'raw' && <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className={sectionLabel}>{statsType === 'gk' ? t({ en: 'Goalkeepers', is: 'Markmenn' }) : t(T.players)}</p>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setSelectedPlayerIds(new Set())} className={linkBtn}>{t({ en: 'All', is: 'Allir' })}</button>
+                <button type="button" onClick={() => setSelectedPlayerIds(new Set(relevantPlayers.map(p => p.id)))} className={linkBtn}>{t({ en: 'Select each', is: 'Velja alla' })}</button>
               </div>
             </div>
-            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-36 overflow-y-auto">
+            <div className={`${listBox} max-h-40`}>
               {relevantPlayers.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-gray-400">Engir leikmenn</p>
+                <p className="px-3 py-2.5 text-[14px] text-muted">{t({ en: 'No players', is: 'Engir leikmenn' })}</p>
               ) : relevantPlayers.map(p => (
-                <label key={p.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                <label key={p.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#f8f9fa]">
                   <input
                     type="checkbox"
                     checked={selectedPlayerIds.size === 0 || selectedPlayerIds.has(p.id)}
@@ -206,51 +186,42 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
                         togglePlayer(p.id)
                       }
                     }}
-                    className="rounded"
+                    className={check}
                   />
-                  <span className="text-sm text-gray-700">
-                    {p.jersey_number != null ? <span className="text-gray-400 text-xs mr-1">#{p.jersey_number}</span> : null}
+                  <span className="text-[14px]">
+                    {p.jersey_number != null ? <span className="text-muted num inline-block min-w-[26px]">{p.jersey_number}</span> : null}
                     {p.first_name} {p.last_name}
                   </span>
                 </label>
               ))}
             </div>
             {selectedPlayerIds.size > 0 && (
-              <p className="text-xs text-blue-600 mt-1">{selectedPlayerIds.size} valinn/valin</p>
+              <p className="text-[13px] text-muted num">{selectedPlayerIds.size} {t({ en: 'selected', is: 'valin' })}</p>
             )}
           </section>}
 
-          {/* Matches */}
-          <section>
-            <div className="flex items-center justify-between mb-2">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Leikir</p>
-              <div className="flex gap-2">
-                <button onClick={() => setSelectedMatchIds(new Set())} className="text-xs text-blue-600 hover:underline">
-                  Allir
-                </button>
-                <span className="text-gray-300">|</span>
-                <button
-                  onClick={() => setSelectedMatchIds(new Set(matches.map(m => m.id)))}
-                  className="text-xs text-blue-600 hover:underline"
-                >
-                  Velja alla
-                </button>
+          <section className="space-y-2">
+            <div className="flex items-center justify-between">
+              <p className={sectionLabel}>{t(T.matches)}</p>
+              <div className="flex gap-3">
+                <button type="button" onClick={() => setSelectedMatchIds(new Set())} className={linkBtn}>{t({ en: 'All', is: 'Allir' })}</button>
+                <button type="button" onClick={() => setSelectedMatchIds(new Set(matches.map(m => m.id)))} className={linkBtn}>{t({ en: 'Select each', is: 'Velja alla' })}</button>
               </div>
             </div>
-            <div className="border border-gray-200 rounded-lg divide-y divide-gray-100 max-h-40 overflow-y-auto">
+            <div className={`${listBox} max-h-44`}>
               {matches.length === 0 ? (
-                <p className="px-3 py-2 text-xs text-gray-400">Engir leikir</p>
+                <p className="px-3 py-2.5 text-[14px] text-muted">{t({ en: 'No matches', is: 'Engir leikir' })}</p>
               ) : matches.map(m => {
                 const isHome = m.home_team_id === trackedTeamId
                 const opponent = isHome ? m.away_team : m.home_team
                 const scored = isHome ? m.home_score : m.away_score
                 const against = isHome ? m.away_score : m.home_score
                 const date = m.match_date
-                  ? new Date(m.match_date).toLocaleDateString('is-IS', { day: 'numeric', month: 'short' })
+                  ? new Date(m.match_date).toLocaleDateString(lang === 'is' ? 'is-IS' : 'en-GB', { day: 'numeric', month: 'short' })
                   : ''
                 const checked = selectedMatchIds.size === 0 || selectedMatchIds.has(m.id)
                 return (
-                  <label key={m.id} className="flex items-center gap-3 px-3 py-2 cursor-pointer hover:bg-gray-50">
+                  <label key={m.id} className="flex items-center gap-3 px-3 py-2.5 cursor-pointer hover:bg-[#f8f9fa]">
                     <input
                       type="checkbox"
                       checked={checked}
@@ -262,53 +233,30 @@ export function ExportModal({ onClose, allEvents, players, matches, trackedTeamI
                           toggleMatch(m.id)
                         }
                       }}
-                      className="rounded"
+                      className={check}
                     />
-                    <span className="text-sm text-gray-700 flex-1">
-                      vs {opponent?.name ?? '?'}
-                    </span>
-                    <span className="text-xs text-gray-400 tabular-nums">
-                      {scored ?? '?'}–{against ?? '?'} · {date}
-                    </span>
+                    <span className="text-[14px] flex-1 min-w-0 truncate">{t({ en: 'vs', is: 'gegn' })} {opponent?.name ?? '?'}</span>
+                    <span className="text-[13px] text-muted num">{scored ?? '?'}–{against ?? '?'} · {date}</span>
                   </label>
                 )
               })}
             </div>
             {selectedMatchIds.size > 0 && (
-              <p className="text-xs text-blue-600 mt-1">{selectedMatchIds.size} leikur/leikir valinn/valin</p>
+              <p className="text-[13px] text-muted num">{selectedMatchIds.size} {t({ en: 'selected', is: 'valin' })}</p>
             )}
           </section>
 
-          {/* Options — hidden in raw mode */}
           {statsType !== 'raw' && (
-            <section>
-              <label className="flex items-center gap-3 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={includeTotals}
-                  onChange={e => setIncludeTotals(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm text-gray-700">Hafa með samtals línu</span>
-              </label>
-            </section>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input type="checkbox" checked={includeTotals} onChange={e => setIncludeTotals(e.target.checked)} className={check} />
+              <span className="text-[14px]">{t({ en: 'Include a totals row', is: 'Hafa með samtals línu' })}</span>
+            </label>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="px-5 py-4 border-t border-gray-200 flex gap-3">
-          <button
-            onClick={onClose}
-            className="flex-1 py-2.5 rounded-xl border border-gray-300 text-sm font-semibold text-gray-600 hover:bg-gray-50"
-          >
-            Hætta við
-          </button>
-          <button
-            onClick={handleDownload}
-            className="flex-1 py-2.5 rounded-xl bg-blue-600 text-white text-sm font-semibold hover:bg-blue-500 active:bg-blue-700"
-          >
-            Hlaða niður
-          </button>
+        <div className="px-5 py-4 border-t border-line flex gap-3">
+          <Button variant="secondary" className="flex-1" onClick={onClose}>{t(T.cancel)}</Button>
+          <Button variant="primary" className="flex-1" onClick={handleDownload}>{t({ en: 'Download', is: 'Hlaða niður' })}</Button>
         </div>
       </div>
     </div>

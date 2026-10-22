@@ -3,7 +3,9 @@
 // Season Dashboard.
 import { useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { Spinner } from '@/components/ui'
+import { Button, Input, Spinner } from '@/components/ui'
+import { useT } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
 import {
   createTeam, getMyTeams, getArchivedTeams, getTeamMatchCounts, updateTeam,
   deleteTeam, archiveTeam, restoreTeam, setTrackedTeamId, updateProfileTeam,
@@ -29,7 +31,7 @@ export function ManageTeamsList({ mainTeamId, onAddTeam }: Props) {
     queryFn: getArchivedTeams,
   })
 
-  const teamIds = myTeams.map(t => t.id)
+  const teamIds = myTeams.map(tm => tm.id)
   const { data: matchCounts = {} } = useQuery({
     queryKey: ['team-match-counts', teamIds.join(',')],
     queryFn: () => getTeamMatchCounts(teamIds),
@@ -83,15 +85,19 @@ export function ManageTeamsList({ mainTeamId, onAddTeam }: Props) {
     },
   })
 
+  const t = useT()
+  const err = (e: unknown) => e ? <p className="text-[14px] text-[#c4242a]" role="alert">{(e as Error).message}</p> : null
+  const textBtn = 'h-8 px-2.5 rounded-md text-[13px] font-medium transition-colors shrink-0 disabled:opacity-50'
+
   return (
     <div className="space-y-4">
-      <div className="border rounded-lg border-gray-200 p-4 space-y-2">
+      <div className="bg-white border border-line rounded-lg">
         {loadingTeams ? (
           <div className="flex justify-center py-6"><Spinner /></div>
         ) : myTeams.length === 0 ? (
-          <p className="text-sm text-gray-500 py-2">You don't have any teams yet — add one below.</p>
+          <p className="text-[15px] text-muted p-4">{t({ en: 'You have no teams yet. Add one below.', is: 'Þú átt engin lið enn. Bættu við liði hér fyrir neðan.' })}</p>
         ) : (
-          <div className="space-y-2">
+          <ul>
             {myTeams.map(team => {
               const count = matchCounts[team.id]
               const hasMatches = (count ?? 0) > 0
@@ -100,149 +106,88 @@ export function ManageTeamsList({ mainTeamId, onAddTeam }: Props) {
               const isConfirming = confirmDeleteId === team.id
 
               return (
-                <div key={team.id} className="flex items-center gap-2 px-3 py-2.5 rounded-lg border border-gray-200">
+                <li key={team.id} className="flex items-center gap-2 px-4 min-h-[56px] py-2 border-t border-[#eef0f2] first:border-t-0">
                   {isEditing ? (
                     <>
-                      <input
-                        value={editName}
-                        onChange={e => setEditName(e.target.value)}
-                        className="flex-1 px-2 py-1 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        autoFocus
-                      />
-                      <button
-                        onClick={() => editName.trim() && renameMutation.mutate({ id: team.id, name: editName.trim() })}
-                        disabled={!editName.trim() || renameMutation.isPending}
-                        className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 px-2 py-1 shrink-0"
-                      >
-                        {renameMutation.isPending ? '…' : 'Vista'}
-                      </button>
-                      <button
-                        onClick={() => setEditingId(null)}
-                        className="text-xs text-gray-400 hover:text-gray-600 px-1 shrink-0"
-                      >
-                        Hætta við
-                      </button>
+                      <Input value={editName} onChange={e => setEditName(e.target.value)} className="flex-1 !h-9" autoFocus
+                        aria-label={t({ en: 'Team name', is: 'Nafn liðs' })} autoComplete="off" />
+                      <Button size="sm" onClick={() => editName.trim() && renameMutation.mutate({ id: team.id, name: editName.trim() })}
+                        disabled={!editName.trim() || renameMutation.isPending}>
+                        {renameMutation.isPending ? '…' : t(T.save)}
+                      </Button>
+                      <Button variant="ghost" size="sm" onClick={() => setEditingId(null)}>{t(T.cancel)}</Button>
                     </>
                   ) : (
                     <>
-                      <span className="flex-1 font-medium text-gray-800 truncate">
+                      <span className="flex-1 min-w-0 truncate text-[15px] font-medium">
                         {team.name}
-                        {hasMatches && (
-                          <span className="ml-2 text-xs font-normal text-gray-400">
-                            {count} {count === 1 ? 'leikur' : 'leikir'}
-                          </span>
-                        )}
+                        {hasMatches && <span className="ml-2 text-[13px] font-normal text-muted num">{count} {count === 1 ? t({ en: 'match', is: 'leikur' }) : t({ en: 'matches', is: 'leikir' })}</span>}
                       </span>
-                      <button
-                        onClick={() => { setEditingId(team.id); setEditName(team.name) }}
-                        className="text-xs font-medium text-gray-500 hover:text-blue-600 px-2 py-1 shrink-0"
-                      >
-                        Breyta
+                      <button type="button" onClick={() => { setEditingId(team.id); setEditName(team.name) }}
+                        className={`${textBtn} text-muted hover:text-ink hover:bg-[#f5f6f8]`}>
+                        {t({ en: 'Rename', is: 'Breyta' })}
                       </button>
                       {isMain ? (
-                        <span className="text-xs text-gray-400 shrink-0">Aðallið</span>
+                        <span className="text-[12px] font-medium px-2 py-0.5 rounded bg-[#eef0f3] shrink-0">{t({ en: 'Main team', is: 'Aðallið' })}</span>
                       ) : isConfirming ? (
-                        <div className="flex gap-1 shrink-0">
-                          <button
-                            onClick={() => removeMutation.mutate({ id: team.id, hasMatches })}
-                            disabled={removeMutation.isPending}
-                            className={`text-xs font-medium px-2 py-1 rounded text-white disabled:opacity-50 ${
-                              hasMatches ? 'bg-slate-600 hover:bg-slate-700' : 'bg-red-600 hover:bg-red-700'
-                            }`}
-                          >
-                            {removeMutation.isPending ? '…' : hasMatches ? 'Fela?' : 'Eyða?'}
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[13px] text-muted hidden sm:inline">
+                            {hasMatches ? t({ en: 'Hide this team?', is: 'Fela þetta lið?' }) : t({ en: 'Delete this team?', is: 'Eyða þessu liði?' })}
+                          </span>
+                          <button type="button" onClick={() => removeMutation.mutate({ id: team.id, hasMatches })} disabled={removeMutation.isPending}
+                            className={`${textBtn} text-white ${hasMatches ? 'bg-[#111214]' : 'bg-[#c4242a]'}`}>
+                            {removeMutation.isPending ? '…' : hasMatches ? t({ en: 'Hide', is: 'Fela' }) : t(T.delete)}
                           </button>
-                          <button
-                            onClick={() => setConfirmDeleteId(null)}
-                            className="text-xs text-gray-400 hover:text-gray-600 px-1"
-                          >
-                            Hætta við
-                          </button>
+                          <button type="button" onClick={() => setConfirmDeleteId(null)} className={`${textBtn} text-muted hover:text-ink`}>{t(T.cancel)}</button>
                         </div>
                       ) : (
-                        <button
-                          onClick={() => setConfirmDeleteId(team.id)}
-                          className="text-xs font-medium text-gray-400 hover:text-red-500 px-2 py-1 shrink-0"
-                        >
-                          {hasMatches ? 'Fela' : 'Eyða'}
+                        <button type="button" onClick={() => setConfirmDeleteId(team.id)}
+                          className={`${textBtn} text-muted hover:text-[#c4242a] hover:bg-[#ffedea]`}>
+                          {hasMatches ? t({ en: 'Hide', is: 'Fela' }) : t(T.delete)}
                         </button>
                       )}
                     </>
                   )}
-                </div>
+                </li>
               )
             })}
-          </div>
+          </ul>
         )}
       </div>
 
-      {renameMutation.error && (
-        <p className="text-sm text-red-600">{(renameMutation.error as Error).message}</p>
-      )}
-      {removeMutation.error && (
-        <p className="text-sm text-red-600">{(removeMutation.error as Error).message}</p>
-      )}
-      {restoreMutation.error && (
-        <p className="text-sm text-red-600">{(restoreMutation.error as Error).message}</p>
-      )}
-      {createMutation.error && (
-        <p className="text-sm text-red-600">{(createMutation.error as Error).message}</p>
-      )}
+      {err(renameMutation.error)}
+      {err(removeMutation.error)}
+      {err(restoreMutation.error)}
+      {err(createMutation.error)}
 
       {onAddTeam ? (
-        <button
-          onClick={onAddTeam}
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-        >
-          + Add a new team
-        </button>
+        <Button variant="secondary" onClick={onAddTeam}>{t({ en: 'Add a new team', is: 'Bæta við nýju liði' })}</Button>
       ) : addingNew ? (
         <div className="flex items-center gap-2">
-          <input
-            value={newTeamName}
-            onChange={e => setNewTeamName(e.target.value)}
-            placeholder="Team name"
-            className="flex-1 px-2 py-1.5 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-blue-500"
-            autoFocus
-          />
-          <button
-            onClick={() => newTeamName.trim() && createMutation.mutate()}
-            disabled={!newTeamName.trim() || createMutation.isPending}
-            className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 px-2 py-1.5 shrink-0"
-          >
-            {createMutation.isPending ? 'Saving…' : 'Vista'}
-          </button>
-          <button
-            onClick={() => { setAddingNew(false); setNewTeamName('') }}
-            className="text-xs text-gray-400 hover:text-gray-600 px-1 shrink-0"
-          >
-            Hætta við
-          </button>
+          <Input value={newTeamName} onChange={e => setNewTeamName(e.target.value)} autoComplete="off"
+            placeholder={t({ en: 'Team name', is: 'Nafn liðs' })} aria-label={t({ en: 'Team name', is: 'Nafn liðs' })} className="flex-1" autoFocus />
+          <Button onClick={() => newTeamName.trim() && createMutation.mutate()} disabled={!newTeamName.trim() || createMutation.isPending}>
+            {createMutation.isPending ? t(T.saving) : t(T.save)}
+          </Button>
+          <Button variant="ghost" onClick={() => { setAddingNew(false); setNewTeamName('') }}>{t(T.cancel)}</Button>
         </div>
       ) : (
-        <button
-          onClick={() => setAddingNew(true)}
-          className="text-sm text-blue-600 hover:text-blue-700 font-medium"
-        >
-          + Add a new team
-        </button>
+        <Button variant="secondary" onClick={() => setAddingNew(true)}>{t({ en: 'Add a new team', is: 'Bæta við nýju liði' })}</Button>
       )}
 
       {archivedTeams.length > 0 && (
-        <div className="pt-2 border-t border-gray-100 space-y-2">
-          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Falin lið</p>
-          {archivedTeams.map(team => (
-            <div key={team.id} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-100 bg-gray-50">
-              <span className="flex-1 text-sm text-gray-500 truncate">{team.name}</span>
-              <button
-                onClick={() => restoreMutation.mutate(team.id)}
-                disabled={restoreMutation.isPending}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700 disabled:opacity-50 px-2 py-1 shrink-0"
-              >
-                {restoreMutation.isPending ? '…' : 'Sýna aftur'}
-              </button>
-            </div>
-          ))}
+        <div className="space-y-2 pt-2">
+          <p className="text-[14px] font-medium">{t({ en: 'Hidden teams', is: 'Falin lið' })}</p>
+          <ul className="bg-[#f5f6f8] border border-line rounded-lg">
+            {archivedTeams.map(team => (
+              <li key={team.id} className="flex items-center gap-2 px-4 min-h-[48px] border-t border-line first:border-t-0">
+                <span className="flex-1 text-[15px] text-muted truncate">{team.name}</span>
+                <Button variant="secondary" size="sm" onClick={() => restoreMutation.mutate(team.id)} disabled={restoreMutation.isPending}>
+                  {restoreMutation.isPending ? '…' : t({ en: 'Show again', is: 'Sýna aftur' })}
+                </Button>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

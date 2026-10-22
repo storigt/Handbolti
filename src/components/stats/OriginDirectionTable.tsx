@@ -1,39 +1,42 @@
 import { Fragment } from 'react'
 import { DIRECTIONS } from '@/lib/attackContext'
 import { pct, v, type OriginDirectionRow } from '@/lib/stats/matchStats'
+import { useT } from '@/lib/i18n/lang'
+import { T } from '@/lib/i18n/terms'
 
-// Cross-tab: 7 origin zones (rows) × 3 directions (Hægri/Vinstri/Hvorugt, column
-// groups). When `successLabel` is given, each cell shows success/total/% (e.g.
-// goals/shots for shots); otherwise each cell is just a count.
+// Cross-tab: 7 origin zones (rows) × 3 directions (column groups). When
+// `successLabel` is given, each cell shows success/total/% (e.g. goals/shots);
+// otherwise each cell is just a count.
 export function OriginDirectionTable({ title, rows, successLabel }: {
   title: string
   rows: OriginDirectionRow[]
   successLabel?: string
 }) {
+  const t = useT()
   const showRate = !!successLabel
+  const edge = 'border-l border-line'
   return (
-    <div className="px-2 pb-4">
-      <p className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">{title}</p>
+    <section className="bg-white border border-line rounded-lg overflow-hidden">
+      <h3 className="px-4 pt-3 pb-2 text-[15px] font-medium">{title}</h3>
       <div className="overflow-x-auto">
-        <table className="text-xs border-collapse w-auto">
+        <table className="text-[13px] border-collapse w-auto num">
           <thead>
-            <tr className="bg-gray-100 border-b border-gray-300">
-              <th className="px-3 py-1.5 text-left text-[10px] font-bold text-gray-600 border-r border-gray-200" />
+            <tr>
+              <th className="px-4 pb-1 text-left text-[12px] font-normal text-muted min-w-[140px]" />
               {DIRECTIONS.map(d => (
-                <th key={d.v} colSpan={showRate ? 3 : 1}
-                  className="px-2 py-1 text-center text-[10px] font-bold text-gray-700 bg-gray-100 border-r border-gray-300 whitespace-nowrap">
-                  {d.label}
+                <th key={d.v} colSpan={showRate ? 3 : 1} className={`px-3 pb-1 text-left text-[12px] font-medium text-ink whitespace-nowrap ${edge}`}>
+                  {t(d.label)}
                 </th>
               ))}
             </tr>
             {showRate && (
-              <tr className="bg-gray-50 border-b border-gray-200">
-                <th className="border-r border-gray-200" />
+              <tr className="border-b border-line">
+                <th />
                 {DIRECTIONS.map(d => (
                   <Fragment key={d.v}>
-                    <th className="px-2 py-1 text-center text-[10px] font-medium text-gray-500 whitespace-nowrap">{successLabel}</th>
-                    <th className="px-2 py-1 text-center text-[10px] font-medium text-gray-500 whitespace-nowrap">Fjöldi</th>
-                    <th className="px-2 py-1 text-center text-[10px] font-medium text-gray-500 border-r border-gray-300 whitespace-nowrap">%</th>
+                    <th className={`px-3 pb-2 text-right text-[12px] font-normal text-muted whitespace-nowrap ${edge}`}>{successLabel}</th>
+                    <th className="px-3 pb-2 text-right text-[12px] font-normal text-muted whitespace-nowrap">{t(T.count)}</th>
+                    <th className="px-3 pb-2 text-right text-[12px] font-normal text-muted whitespace-nowrap">%</th>
                   </Fragment>
                 ))}
               </tr>
@@ -41,22 +44,18 @@ export function OriginDirectionTable({ title, rows, successLabel }: {
           </thead>
           <tbody>
             {rows.map(row => (
-              <tr key={row.zone} className="bg-white border-b border-gray-100">
-                <td className="px-3 py-1.5 font-medium text-gray-700 border-r border-gray-200 whitespace-nowrap">{row.label}</td>
+              <tr key={row.zone} className="border-t border-[#eef0f2]">
+                <td className="px-4 py-2 font-medium whitespace-nowrap">{t(row.label)}</td>
                 {DIRECTIONS.map(d => {
                   const cell = row.cells[d.v]
                   if (!showRate) {
-                    return (
-                      <td key={d.v} className={`px-3 py-1.5 text-center border-r border-gray-200 ${cell.total > 0 ? 'text-gray-700 font-semibold' : 'text-gray-300'}`}>
-                        {v(cell.total)}
-                      </td>
-                    )
+                    return <td key={d.v} className={`px-3 py-2 text-right ${edge} ${cell.total > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}`}>{v(cell.total)}</td>
                   }
                   return (
                     <Fragment key={d.v}>
-                      <td className={`px-2 py-1.5 text-center ${cell.success > 0 ? 'text-green-700 font-semibold' : 'text-gray-300'}`}>{v(cell.success)}</td>
-                      <td className="px-2 py-1.5 text-center text-gray-500">{v(cell.total)}</td>
-                      <td className="px-2 py-1.5 text-center text-gray-600 border-r border-gray-300">{pct(cell.success, cell.total)}</td>
+                      <td className={`px-3 py-2 text-right ${edge} ${cell.success > 0 ? 'text-ink font-medium' : 'text-[#9aa0a8]'}`}>{v(cell.success)}</td>
+                      <td className={`px-3 py-2 text-right ${cell.total > 0 ? 'text-ink' : 'text-[#9aa0a8]'}`}>{v(cell.total)}</td>
+                      <td className="px-3 py-2 text-right text-muted">{pct(cell.success, cell.total)}</td>
                     </Fragment>
                   )
                 })}
@@ -65,6 +64,6 @@ export function OriginDirectionTable({ title, rows, successLabel }: {
           </tbody>
         </table>
       </div>
-    </div>
+    </section>
   )
 }

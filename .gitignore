@@ -24,3 +24,11 @@ supabase/.temp/
 *.njsproj
 *.sln
 *.sw?
+# Playwright CLI output (may contain credentials)
+.playwright-cli/
+
+# Tasteskill working files (screenshots, direction sheets)
+.taste-skill/
+
+# Local one-off script for this account's sample data (names a team id)
+scripts/demo-seed-cleanup.sql

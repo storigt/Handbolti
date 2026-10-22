@@ -1,5 +1,6 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import '@fontsource-variable/jost'
 import './index.css'
 import App from './App.tsx'
 
@@ -13,8 +14,23 @@ if (import.meta.env.DEV && 'serviceWorker' in navigator) {
   })
 }
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+const root = createRoot(document.getElementById('root')!)
+
+// DEV ONLY: ?preview=<screen> renders a screen with sample data (no sign-in).
+// The branch is removed from production builds.
+const preview = import.meta.env.DEV ? new URLSearchParams(location.search).get('preview') : null
+if (preview === 'home') {
+  void import('./dev/HomePreview').then(({ HomePreview }) => {
+    root.render(<StrictMode><HomePreview /></StrictMode>)
+  })
+} else if (preview) {
+  void import('./dev/ScreenPreview').then(({ ScreenPreview }) => {
+    root.render(<StrictMode><ScreenPreview screen={preview} /></StrictMode>)
+  })
+} else {
+  root.render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  )
+}

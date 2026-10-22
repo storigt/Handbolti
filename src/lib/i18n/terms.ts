@@ -1,0 +1,206 @@
+// Handball vocabulary in both languages. Every screen takes its stat words from
+// here so a term reads the same in the logger, the tables, the report and the
+// dashboard. Icelandic keeps the words coaches already use.
+import type { Text } from './lang'
+
+export const T = {
+  // generic
+  total: { en: 'Total', is: 'Samtals' },
+  average: { en: 'Average', is: 'Meðaltal' },
+  totals: { en: 'Totals', is: 'Heildartölur' },
+  perMatch: { en: 'Per match', is: 'Meðaltal' },
+  name: { en: 'Name', is: 'Nafn' },
+  player: { en: 'Player', is: 'Leikmaður' },
+  players: { en: 'Players', is: 'Leikmenn' },
+  team: { en: 'Team', is: 'Lið' },
+  opponent: { en: 'Opponent', is: 'Andstæðingur' },
+  other: { en: 'Other', is: 'Annað' },
+  none: { en: 'None', is: 'Enginn' },
+  cancel: { en: 'Cancel', is: 'Hætta við' },
+  back: { en: 'Back', is: 'Til baka' },
+  next: { en: 'Next', is: 'Áfram' },
+  save: { en: 'Save', is: 'Vista' },
+  saving: { en: 'Saving…', is: 'Vista…' },
+  loading: { en: 'Loading…', is: 'Hleð…' },
+  close: { en: 'Close', is: 'Loka' },
+  edit: { en: 'Edit', is: 'Breyta' },
+  delete: { en: 'Delete', is: 'Eyða' },
+  yes: { en: 'Yes', is: 'Já' },
+  no: { en: 'No', is: 'Nei' },
+  home: { en: 'Home', is: 'Heima' },
+  away: { en: 'Away', is: 'Úti' },
+  period: { en: 'Period', is: 'Hálfleikur' },
+  minute: { en: 'Minute', is: 'Mínúta' },
+  minutes: { en: 'Minutes', is: 'Mínútur' },
+  from: { en: 'From', is: 'Frá' },
+  to: { en: 'To', is: 'Til' },
+  clear: { en: 'Clear', is: 'Hreinsa' },
+  matches: { en: 'Matches', is: 'Leikir' },
+  match: { en: 'Match', is: 'Leikur' },
+  season: { en: 'Season', is: 'Tímabil' },
+  competition: { en: 'Competition', is: 'Keppni' },
+  allSeasons: { en: 'All seasons', is: 'Öll tímabil' },
+  allCompetitions: { en: 'All competitions', is: 'Allar keppnir' },
+
+  // areas
+  attack: { en: 'Attack', is: 'Sókn' },
+  defence: { en: 'Defence', is: 'Vörn' },
+  goalkeeper: { en: 'Goalkeeper', is: 'Markvörður' },
+  goalkeeping: { en: 'Goalkeeping', is: 'Markvarsla' },
+  teamStats: { en: 'Team', is: 'Liðstölur' },
+  shotMap: { en: 'Shot map', is: 'Skotakort' },
+  indices: { en: 'Indices', is: 'Vísitölur' },
+  overview: { en: 'Overview', is: 'Yfirlit' },
+  charts: { en: 'Charts', is: 'Gröf' },
+
+  // counts
+  goals: { en: 'Goals', is: 'Mörk' },
+  goalsShort: { en: 'G', is: 'M' },
+  shots: { en: 'Shots', is: 'Skot' },
+  saves: { en: 'Saves', is: 'Varin' },
+  faced: { en: 'Faced', is: 'Fjöldi' },
+  count: { en: 'Count', is: 'Fjöldi' },
+  attacks: { en: 'Possessions', is: 'Fjöldi sókna' },
+  shootingPct: { en: 'Shooting %', is: 'Skotnýting' },
+  savePct: { en: 'Save %', is: 'Markvarsla' },
+
+  // shot range
+  penalty: { en: '7 m', is: 'Víti' },
+  wing: { en: 'Wing', is: 'Horn' },
+  leftWing: { en: 'Left wing', is: 'Vinstra horn' },
+  rightWing: { en: 'Right wing', is: 'Hægra horn' },
+  nineM: { en: '9 m+', is: '9m+' },
+  sevenEight: { en: '7–8 m', is: '7–8m' },
+  sixM: { en: '6 m', is: '6m' },
+  line: { en: 'Line', is: 'Lína' },
+
+  // phase
+  fastBreak: { en: 'Fast break', is: 'Hraðaupphlaup' },
+  secondWave: { en: 'Second wave', is: 'Seinni bylgja' },
+  setPlay: { en: 'Set play', is: 'Uppstilltur leikur' },
+
+  // numbers on court
+  inferiority: { en: 'Short-handed', is: 'Undirtala' },
+  superiority: { en: 'Extra player', is: 'Yfirtala' },
+  s7v6: { en: '7 v 6', is: '7á6' },
+  s6v6: { en: '6 v 6', is: '6á6' },
+  s6v7: { en: '6 v 7', is: '6á7' },
+
+  // attack extras
+  chancesCreated: { en: 'Chances', is: 'Sk. færi' },
+  assists: { en: 'Assists', is: 'Stoðs.' },
+  penaltyAssists: { en: '7 m ast', is: 'Vítas.' },
+  drewPenalty: { en: 'Drew 7 m', is: 'Fisk. víti' },
+  turnovers: { en: 'Turnovers', is: 'Tapaðir' },
+  offRebounds: { en: 'Off. reb.', is: 'Sóknarfrák.' },
+  drewSuspension: { en: 'Drew 2′', is: 'Fengnar 2 mín' },
+  handUp: { en: 'Hand up', is: 'Höndin uppi' },
+  handDown: { en: 'Hand down', is: 'Höndin niðri' },
+  origin: { en: 'origin', is: 'uppruni' },
+
+  // defence
+  duels: { en: '1 v 1', is: 'Árás 1á1' },
+  duelsWon: { en: 'Won', is: 'Vinnur' },
+  duelPct: { en: '1 v 1 %', is: '1á1 %' },
+  highContact: { en: 'High contact', is: 'Hár kontakt' },
+  freeThrows: { en: 'Free throws', is: 'Fríköst' },
+  steals: { en: 'Steals', is: 'Stolinn' },
+  blocks: { en: 'Blocks', is: 'Blokk' },
+  rebounds: { en: 'Rebounds', is: 'Fráköst' },
+  penConceded: { en: '7 m conceded', is: 'Víti á' },
+  yellow: { en: 'Yellow', is: 'Gult' },
+  twoMin: { en: '2 min', is: '2 mín' },
+  red: { en: 'Red', is: 'Rautt' },
+  blue: { en: 'Blue', is: 'Blátt' },
+  protest: { en: 'Dissent', is: 'Værukærð' },
+  drewOffFoul: { en: 'Drew off. foul', is: 'Fisk. sóknarbrot' },
+
+  // goalkeeping extras
+  emptyPhase: { en: 'Empty phase', is: 'Tómur fasi' },
+  positiveResponse: { en: 'Positive response', is: 'Jákv. viðbrögð' },
+  conceded: { en: 'Conceded', is: 'Fengin mörk' },
+
+  // outcomes
+  goal: { en: 'Goal', is: 'Mark' },
+  saved: { en: 'Saved', is: 'Varið' },
+  blocked: { en: 'Blocked', is: 'Blokkað' },
+  post: { en: 'Post', is: 'Stöng' },
+  wide: { en: 'Wide', is: 'Framhjá' },
+  offTarget: { en: 'Off target', is: 'Ekki á mark' },
+} satisfies Record<string, Text>
+
+/** Attack origin labels (stored values stay the same; see attackContext.ts). */
+export const ORIGIN_TEXT: Record<string, Text> = {
+  left_wing: { en: 'Left wing', is: 'Vinstra horn' },
+  left_center: { en: 'Left back', is: 'Vinstri skytta' },
+  center: { en: 'Left centre', is: 'Vinstri miðja' },
+  right_center: { en: 'Right centre', is: 'Hægri miðja' },
+  right_wing: { en: 'Right back', is: 'Hægri skytta' },
+  line: { en: 'Right wing', is: 'Hægra horn' },
+  other: { en: 'Other (attack)', is: 'Annað (árás)' },
+}
+
+export const DIRECTION_TEXT: Record<string, Text> = {
+  right: { en: 'Right', is: 'Hægri' },
+  left: { en: 'Left', is: 'Vinstri' },
+  neither: { en: 'Neither', is: 'Hvorugt' },
+}
+
+/** Event types as shown in feeds and logs (stored values never change). */
+export const EVENT_TEXT: Record<string, Text> = {
+  SHOT: { en: 'Shot', is: 'Skot' },
+  TURNOVER: { en: 'Turnover', is: 'Tapaður bolti' },
+  SUSPENSION: { en: 'Suspension', is: 'Refsing' },
+  FOUL: { en: 'Foul', is: 'Brot' },
+  GOALKEEPER_ACTION: { en: 'Goalkeeper', is: 'Markvarsla' },
+  TIMEOUT: { en: 'Timeout', is: 'Leikhlé' },
+  PERIOD_MARKER: { en: 'Period', is: 'Hálfleikur' },
+  SUBSTITUTION: { en: 'Substitution', is: 'Skipting' },
+  DEFENSIVE_ACTION: { en: 'Defence', is: 'Vörn' },
+  ATTACKING_ACTION: { en: 'Attack action', is: 'Sóknaraðgerð' },
+  ATTACK: { en: 'Possession', is: 'Sókn' },
+}
+
+export const SUB_TEXT: Record<string, Text> = {
+  goal: { en: 'goal', is: 'mark' },
+  saved: { en: 'saved', is: 'varið' },
+  blocked: { en: 'blocked', is: 'blokkað' },
+  post: { en: 'post', is: 'stöng' },
+  wide: { en: 'wide', is: 'framhjá' },
+  technical: { en: 'technical', is: 'tæknilegt' },
+  offensive_foul: { en: 'offensive foul', is: 'sóknarbrot' },
+  bad_pass: { en: 'bad pass', is: 'sendingarmistök' },
+  delay: { en: 'passive play', is: 'töf' },
+  other: { en: 'other', is: 'annað' },
+  '2min': { en: '2 min', is: '2 mín' },
+  yellow_card: { en: 'yellow card', is: 'gult spjald' },
+  red_card: { en: 'red card', is: 'rautt spjald' },
+  blue_card: { en: 'blue card', is: 'blátt spjald' },
+  disqualification: { en: 'disqualification', is: 'útilokun' },
+  attacking_foul: { en: 'free throw', is: 'fríkast' },
+  '7m_awarded': { en: '7 m', is: 'víti' },
+  passive_play_warning: { en: 'passive warning', is: 'viðvörun um töf' },
+  drew_penalty: { en: 'drew 7 m', is: 'fiskað víti' },
+  save: { en: 'save', is: 'varsla' },
+  goal_conceded: { en: 'goal conceded', is: 'mark á sig' },
+  parry: { en: 'parry', is: 'varið út' },
+  missed: { en: 'off target', is: 'framhjá' },
+  empty_phase: { en: 'empty phase', is: 'tómur fasi' },
+  positive_response: { en: 'positive response', is: 'jákvæð viðbrögð' },
+  team_timeout: { en: 'team timeout', is: 'leikhlé' },
+  referee_timeout: { en: 'referee timeout', is: 'dómarahlé' },
+  period_start: { en: 'start', is: 'byrjun' },
+  period_end: { en: 'end', is: 'lok' },
+  match_end: { en: 'full time', is: 'leikslok' },
+  block: { en: 'block', is: 'blokk' },
+  interception: { en: 'steal', is: 'stolinn' },
+  high_contact: { en: 'high contact', is: 'hár kontakt' },
+  duel_won: { en: '1 v 1 won', is: '1á1 unnið' },
+  duel_lost: { en: '1 v 1 lost', is: '1á1 tapað' },
+  rebound: { en: 'rebound', is: 'frákast' },
+  drew_offensive_foul: { en: 'drew offensive foul', is: 'fiskað sóknarbrot' },
+  opponent_lost_ball: { en: 'opponent lost ball', is: 'andstæðingur tapar bolta' },
+  protest: { en: 'dissent', is: 'værukærð' },
+  offensive_rebound: { en: 'offensive rebound', is: 'sóknarfrákast' },
+  drew_suspension: { en: 'drew 2 min', is: 'fengnar 2 mín' },
+}

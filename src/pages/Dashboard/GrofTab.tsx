@@ -4,17 +4,20 @@ import {
   PieChart, Pie, Cell, ComposedChart, XAxis, YAxis,
   CartesianGrid, Tooltip, Legend, ResponsiveContainer, ReferenceLine, ZAxis,
 } from 'recharts'
+import { useLang, useT, type Lang } from '@/lib/i18n/lang'
 import { computeAttack, computeDefense, computeGK, sumAttack, sumDefense, sumGK } from '@/lib/stats/matchStats'
 import { computeIndices } from '@/lib/stats/indices'
+import { evaluateIndices, type IndexDef } from '@/lib/stats/indexDefs'
+import { useIndexStore } from '@/store/indexStore'
 import type { Event, Player } from '@/lib/db/schema'
 import type { MatchWithTeams } from '@/lib/supabase/dashboardQueries'
 
 // ─── Color palette ────────────────────────────────────────────────────────────
 
 const COLORS = [
-  '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
-  '#0891b2', '#c2410c', '#65a30d', '#b45309', '#6d28d9',
-  '#0284c7', '#e11d48', '#15803d', '#a16207', '#5b21b6',
+  '#1f2de6', '#111214', '#d08a1a', '#2f9461', '#c4242a',
+  '#0e7490', '#7a8290', '#a15c07', '#1d5fbf', '#3a3f47',
+  '#6b8afd', '#9a3412', '#15803d', '#b45309', '#475569',
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -109,13 +112,11 @@ const MATCH_VARS: VarDef[] = [
   { id: 'goalsDiff',     label: 'Goal Difference',   short: 'Diff' },
   { id: 'shotsMade',     label: 'Shots',             short: 'Shots' },
   { id: 'shotEff',       label: 'Shot Efficiency %', short: 'Shot%' },
-  { id: 'GIQI',          label: 'GIQI',              short: 'GIQI' },
-  { id: 'DQIdef',        label: 'DQIdef',            short: 'DQId' },
-  { id: 'DQIoff',        label: 'DQIoff',            short: 'DQIo' },
-  { id: 'ELI',           label: 'ELI',               short: 'ELI' },
-  { id: 'FI',            label: 'FI',                short: 'FI' },
-  { id: 'GKI',           label: 'GKI',               short: 'GKI' },
+  // + one variable per visible index (the user's definitions), added in GrofTab
 ]
+
+/** Chart variable id for an index (prefixed so an index key can't clash with another variable). */
+const ixVar = (key: string) => `ix_${key}`
 
 const DATASET_VARS: Record<DatasetId, VarDef[]> = {
   attack: ATK_VARS, defense: DEF_VARS, gk: GK_VARS, matches: MATCH_VARS,
@@ -123,6 +124,111 @@ const DATASET_VARS: Record<DatasetId, VarDef[]> = {
 
 const DATASET_LABELS: Record<DatasetId, string> = {
   attack: 'Attack', defense: 'Defense', gk: 'Goalkeeping', matches: 'Match Overview',
+}
+
+const IS_LABELS: Record<string, string> = {
+ "2-min Suspensions": "Brottvísanir (2 mín)",
+ "All pairings of selected variables": "Allar pörun valdra breyta",
+ "Assists": "Stoðsendingar",
+ "Bar Chart": "Súlurit",
+ "Blocks": "Blokk",
+ "Box Plot": "Kassarit",
+ "Box plots for multiple variables": "Kassarit fyrir margar breytur",
+ "Chances Created": "Sköpuð færi",
+ "Check normality of a variable": "Athuga normaldreifingu breytu",
+ "Distribution of one variable": "Dreifing einnar breytu",
+ "Distribution of two variables": "Dreifing tveggja breyta",
+ "Drew 2-min": "Fengnar 2 mín",
+ "Drew Offensive Foul": "Fiskað sóknarbrot",
+ "Drew Penalty": "Fiskað víti",
+ "Duel Win %": "1á1 sigrar %",
+ "Duels Won": "1á1 unnin",
+ "Duels": "1á1",
+ "Each match as share of total": "Hver leikur sem hlutfall af heild",
+ "Empty Phase": "Tómur fasi",
+ "Faced – Penalty": "Skot á – víti",
+ "Freekick Given": "Fríköst gefin",
+ "Goal Difference": "Markamunur",
+ "Goals Conceded": "Fengin mörk",
+ "Goals Scored": "Skoruð mörk",
+ "Goals – 2nd Wave": "Mörk – seinni bylgja",
+ "Goals – 6m": "Mörk – 6m",
+ "Goals – 6v6": "Mörk – 6á6",
+ "Goals – 7-8m": "Mörk – 7-8m",
+ "Goals – 7v6": "Mörk – 7á6",
+ "Goals – 9m+": "Mörk – 9m+",
+ "Goals – Corner": "Mörk – horn",
+ "Goals – Fast Break": "Mörk – hraðaupphlaup",
+ "Goals – Inferiority": "Mörk – undirtala",
+ "Goals – Left Corner": "Mörk – vinstra horn",
+ "Goals – Line": "Mörk – lína",
+ "Goals – Penalty": "Mörk – víti",
+ "Goals – Right Corner": "Mörk – hægra horn",
+ "Goals – Set Play": "Mörk – uppstilltur leikur",
+ "Goals – Superiority": "Mörk – yfirtala",
+ "Goals": "Mörk",
+ "Grouped Bar": "Flokkað súlurit",
+ "Heatmap": "Hitakort",
+ "High Contact": "Hár kontakt",
+ "Histogram": "Stuðlarit",
+ "Line Chart": "Línurit",
+ "Matches × multiple variables": "Leikir × margar breytur",
+ "Median and spread of one variable": "Miðgildi og dreifing einnar breytu",
+ "Mosaic Plot": "Mósaíkrit",
+ "Multi-Line": "Margar línur",
+ "Multiple series on one chart": "Margar raðir á einu riti",
+ "Multiple values side by side": "Mörg gildi hlið við hlið",
+ "Normal Q-Q": "Normal Q-Q",
+ "One value compared across matches": "Eitt gildi borið saman milli leikja",
+ "Pareto Chart": "Pareto-rit",
+ "Penalty %": "Víti %",
+ "Penalty Given": "Víti gefin",
+ "Pie Chart": "Kökurit",
+ "Proportion of two variables per match": "Hlutfall tveggja breyta í hverjum leik",
+ "Rebounds": "Fráköst",
+ "Red Cards": "Rauð spjöld",
+ "Relationship between two variables": "Samband tveggja breyta",
+ "Save %": "Markvarsla %",
+ "Saved – 2nd Wave": "Varið – seinni bylgja",
+ "Saved – 6m": "Varið – 6m",
+ "Saved – 7-8m": "Varið – 7-8m",
+ "Saved – 9m+": "Varið – 9m+",
+ "Saved – Corner": "Varið – horn",
+ "Saved – Fast Break": "Varið – hraðaupphlaup",
+ "Saved – Left Corner": "Varið – vinstra horn",
+ "Saved – Line": "Varið – lína",
+ "Saved – Penalty": "Varið – víti",
+ "Saved – Right Corner": "Varið – hægra horn",
+ "Saves": "Varin skot",
+ "Scatter Matrix": "Dreififylki",
+ "Scatter Plot": "Dreifirit",
+ "Shot Efficiency %": "Skotnýting %",
+ "Shots Faced": "Skot á mark",
+ "Shots – 7-8m": "Skot – 7-8m",
+ "Shots – 9m+": "Skot – 9m+",
+ "Shots – Penalty": "Skot – víti",
+ "Shots": "Skot",
+ "Side Box Plots": "Kassarit hlið við hlið",
+ "Side Histogram": "Stuðlarit hlið við hlið",
+ "Sorted descending + cumulative %": "Raðað niður + uppsafnað %",
+ "Steals": "Stolnir boltar",
+ "Trend over matches": "Þróun yfir leiki",
+ "Turnovers": "Tapaðir boltar",
+ "Yellow Cards": "Gul spjöld",
+ "Attack": "Sókn",
+ "Defense": "Vörn",
+ "Goalkeeping": "Markvarsla",
+ "Match Overview": "Yfirlit leikja",
+ "Cumulative %": "Uppsafnað %",
+ "Frequency": "Tíðni",
+ "Theoretical Normal Quantiles": "Fræðileg normaldreifingarhlutföll",
+ "Data": "Gögn",
+ "No data to display": "Engin gögn til að sýna"
+}
+
+/** Label in the current language (stored variable keys never change). */
+function tr(label: string, lang: Lang) {
+  return lang === 'is' ? (IS_LABELS[label] ?? label) : label
 }
 
 // ─── Chart type registry ──────────────────────────────────────────────────────
@@ -151,7 +257,7 @@ function matchLabel(m: MatchWithTeams, trackedTeamId: string, idx: number): stri
   const isHome = m.home_team_id === trackedTeamId
   const opp = (isHome ? m.away_team : m.home_team)?.name ?? `M${idx + 1}`
   const date = m.match_date
-    ? new Date(m.match_date).toLocaleDateString('en-GB', { day: '2-digit', month: 'short' })
+    ? new Date(m.match_date).toLocaleDateString(useLang.getState().lang === 'is' ? 'is-IS' : 'en-GB', { day: '2-digit', month: 'short' })
     : `M${idx + 1}`
   return `${opp} ${date}`
 }
@@ -166,6 +272,7 @@ function buildDataset(
   matches: MatchWithTeams[],
   trackedTeamId: string,
   playerId: string | null,
+  indexDefs: IndexDef[],
 ): DataRow[] {
   if (id === 'attack') {
     return matches.map((m, i) => {
@@ -246,16 +353,15 @@ function buildDataset(
     const scored = (isHome ? m.home_score : m.away_score) ?? 0
     const conceded = (isHome ? m.away_score : m.home_score) ?? 0
     const myShots = ev.filter(e => e.event_type === 'SHOT' && e.team_id === trackedTeamId)
-    const ix = computeIndices(ev, trackedTeamId)
-    return {
+    const { values } = evaluateIndices(indexDefs, computeIndices(ev, trackedTeamId).raw)
+    const row: DataRow = {
       label: matchLabel(m, trackedTeamId, i),
       goalsScored: scored, goalsConceded: conceded, goalsDiff: scored - conceded,
       shotsMade: myShots.length,
       shotEff: myShots.length > 0 ? +(scored / myShots.length * 100).toFixed(1) : 0,
-      GIQI: +ix.GIQI.toFixed(1), DQIdef: +ix.DQIdef.toFixed(1),
-      DQIoff: +ix.DQIoff.toFixed(1), ELI: +ix.ELI.toFixed(1),
-      FI: +ix.FI.toFixed(1), GKI: +ix.GKI.toFixed(1),
     }
+    for (const d of indexDefs) if (!d.hidden) row[ixVar(d.key)] = +(values[d.key] ?? 0).toFixed(1)
+    return row
   })
 }
 
@@ -310,13 +416,16 @@ function qqPoints(values: number[]) {
 
 // ─── Chart renderers ──────────────────────────────────────────────────────────
 
+const SELECT_CLS = 'h-9 text-[14px] border border-[#cdd2d9] rounded-md px-2 bg-white text-ink focus:outline-none focus:ring-2 focus:ring-accent'
+
 const MARGIN = { top: 20, right: 30, left: 10, bottom: 70 }
 const CHART_H = 420
 
 function EmptyState() {
+  const lang = useLang(st => st.lang)
   return (
-    <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-      No data to display
+    <div className="flex items-center justify-center h-48 text-muted text-[14px]">
+      {tr('No data to display', lang)}
     </div>
   )
 }
@@ -360,8 +469,13 @@ function ParetoRenderer({ data, yVar, yLabel }: { data: DataRow[]; yVar: string;
   if (!data.length) return <EmptyState />
   const sorted = [...data].sort((a, b) => (Number(b[yVar]) || 0) - (Number(a[yVar]) || 0))
   const total = sorted.reduce((s, r) => s + (Number(r[yVar]) || 0), 0)
+  const cumValues: number[] = []
   let cum = 0
-  const withCum = sorted.map(r => ({ ...r, _cum: total > 0 ? +(((cum += Number(r[yVar]) || 0) / total) * 100).toFixed(1) : 0 }))
+  for (const r of sorted) {
+    cum += Number(r[yVar]) || 0
+    cumValues.push(total > 0 ? +((cum / total) * 100).toFixed(1) : 0)
+  }
+  const withCum = sorted.map((r, i) => ({ ...r, _cum: cumValues[i] }))
   return (
     <ResponsiveContainer width="100%" height={CHART_H}>
       <ComposedChart data={withCum} margin={MARGIN}>
@@ -373,7 +487,7 @@ function ParetoRenderer({ data, yVar, yLabel }: { data: DataRow[]; yVar: string;
         <Bar yAxisId="left" dataKey={yVar} name={yLabel} fill={COLORS[0]} radius={[4, 4, 0, 0]}>
           {withCum.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
         </Bar>
-        <Line yAxisId="right" dataKey="_cum" name="Cumulative %" type="monotone"
+        <Line yAxisId="right" dataKey="_cum" name={tr('Cumulative %', useLang.getState().lang)} type="monotone"
           stroke="#dc2626" dot={false} strokeWidth={2.5} />
         <ReferenceLine yAxisId="right" y={80} stroke="#d97706" strokeDasharray="5 5"
           label={{ value: '80%', position: 'right', fontSize: 10, fill: '#d97706' }} />
@@ -435,7 +549,7 @@ function ScatterRenderer({ data, xVar, yVar, xLabel, yLabel }: {
           if (!payload?.length) return null
           const d = payload[0].payload as { name: string; x: number; y: number }
           return (
-            <div className="bg-white border border-gray-200 rounded p-2 text-xs shadow">
+            <div className="bg-white border border-line rounded-md p-2 text-[13px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
               <p className="font-semibold">{d.name}</p>
               <p>{xLabel}: {d.x}</p>
               <p>{yLabel}: {d.y}</p>
@@ -472,9 +586,9 @@ function HistogramRenderer({ data, yVar, yLabel }: { data: DataRow[]; yVar: stri
       <BarChart data={bins} margin={MARGIN} barCategoryGap={1}>
         <CartesianGrid strokeDasharray="3 3" vertical={false} />
         <XAxis dataKey="bin" angle={-30} textAnchor="end" tick={{ fontSize: 10 }} interval={0} />
-        <YAxis tick={{ fontSize: 11 }} label={{ value: 'Frequency', angle: -90, position: 'insideLeft', fontSize: 11 }} />
+        <YAxis tick={{ fontSize: 11 }} label={{ value: tr('Frequency', useLang.getState().lang), angle: -90, position: 'insideLeft', fontSize: 11 }} />
         <Tooltip formatter={(v) => [`${v ?? ''}`, 'Frequency']} labelFormatter={l => `${yLabel}: ${l}`} />
-        <Bar dataKey="count" name="Frequency" fill={COLORS[0]} radius={[2, 2, 0, 0]} />
+        <Bar dataKey="count" name={tr('Frequency', useLang.getState().lang)} fill={COLORS[0]} radius={[2, 2, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>
   )
@@ -580,7 +694,7 @@ function QQRenderer({ data, yVar, yLabel }: { data: DataRow[]; yVar: string; yLa
       <ScatterChart margin={{ top: 20, right: 30, left: 20, bottom: 30 }}>
         <CartesianGrid strokeDasharray="3 3" />
         <XAxis dataKey="x" type="number" name="Theoretical" tick={{ fontSize: 11 }}
-          label={{ value: 'Theoretical Normal Quantiles', position: 'insideBottom', offset: -15, fontSize: 11 }} />
+          label={{ value: tr('Theoretical Normal Quantiles', useLang.getState().lang), position: 'insideBottom', offset: -15, fontSize: 11 }} />
         <YAxis dataKey="y" type="number" name={yLabel} tick={{ fontSize: 11 }}
           label={{ value: yLabel, angle: -90, position: 'insideLeft', fontSize: 11 }} />
         <ZAxis range={[40, 40]} />
@@ -588,14 +702,14 @@ function QQRenderer({ data, yVar, yLabel }: { data: DataRow[]; yVar: string; yLa
           if (!payload?.length) return null
           const d = payload[0].payload as { x: number; y: number }
           return (
-            <div className="bg-white border border-gray-200 rounded p-2 text-xs shadow">
+            <div className="bg-white border border-line rounded-md p-2 text-[13px] shadow-[0_4px_12px_rgba(0,0,0,0.08)]">
               <p>Theoretical: {d.x}</p>
               <p>Sample: {d.y}</p>
             </div>
           )
         }} />
-        <Scatter name="Data" data={pts.map(p => ({ x: p.theoretical, y: p.sample }))} fill={COLORS[0]} />
-        <Scatter name="45°" data={diagonal} fill="transparent" line={{ stroke: '#dc2626', strokeDasharray: '6 3', strokeWidth: 2 }} legendType="none" />
+        <Scatter name={tr('Data', useLang.getState().lang)} data={pts.map(p => ({ x: p.theoretical, y: p.sample }))} fill={COLORS[0]} />
+        <Scatter name="45°" data={diagonal} fill="transparent" line={{ stroke: '#c4242a', strokeDasharray: '6 3', strokeWidth: 2 }} legendType="none" />
       </ScatterChart>
     </ResponsiveContainer>
   )
@@ -667,13 +781,20 @@ function MosaicRenderer({ data, yVars, yLabels }: { data: DataRow[]; yVars: stri
   const W = 640, H = 300
   const pW = W - lm - rm, pH = H - tm - bm
   const totalSum = rows.reduce((s, r) => s + r.total, 0)
-  let xOff = lm
+  // Left edge of each column — running sum of the widths before it
+  const xStarts: number[] = []
+  let xRun = lm
+  for (const r of rows) {
+    xStarts.push(xRun)
+    xRun += (r.total / totalSum) * pW
+  }
 
   return (
     <div className="overflow-x-auto flex flex-col items-center gap-3">
       <svg width={W} height={H + bm} className="font-sans">
         {rows.map((row, i) => {
           const colW = (row.total / totalSum) * pW
+          const xOff = xStarts[i]
           let yOff = tm
           const cells = row.props.map((p, j) => {
             const cellH = p * pH
@@ -698,7 +819,6 @@ function MosaicRenderer({ data, yVars, yLabels }: { data: DataRow[]; yVars: stri
               {row.label}
             </text>
           )
-          xOff += colW
           return <g key={i}>{cells}{lbl}</g>
         })}
         <line x1={lm} y1={tm} x2={lm} y2={H - bm + tm} stroke="#d1d5db" />
@@ -706,7 +826,7 @@ function MosaicRenderer({ data, yVars, yLabels }: { data: DataRow[]; yVars: stri
       </svg>
       <div className="flex flex-wrap gap-3 justify-center">
         {yLabels.map((lbl, i) => (
-          <div key={i} className="flex items-center gap-1.5 text-xs text-gray-600">
+          <div key={i} className="flex items-center gap-1.5 text-[13px] text-muted">
             <div className="w-3 h-3 rounded-sm" style={{ background: COLORS[i % COLORS.length] }} />
             {lbl}
           </div>
@@ -775,30 +895,34 @@ function ScatterMatrixRenderer({ data, yVars, yLabels }: { data: DataRow[]; yVar
 function VarSelector({ vars, selected, onChange, label, max = 12 }: {
   vars: VarDef[]; selected: string[]; onChange: (s: string[]) => void; label: string; max?: number
 }) {
+  const t = useT()
   const add = () => {
     const next = vars.find(v => !selected.includes(v.id))
     if (next && selected.length < max) onChange([...selected, next.id])
   }
   return (
     <div className="flex flex-col gap-1.5">
-      <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">{label}</span>
+      <span className="text-[13px] font-medium">{label}</span>
       {selected.map((sel, i) => (
         <div key={i} className="flex items-center gap-1">
           <select
             value={sel}
+            aria-label={`${label} ${i + 1}`}
             onChange={e => onChange(selected.map((s, si) => si === i ? e.target.value : s))}
-            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={SELECT_CLS}
           >
             {vars.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
           </select>
           {selected.length > 1 && (
-            <button onClick={() => onChange(selected.filter((_, si) => si !== i))}
-              className="text-gray-400 hover:text-red-500 text-lg leading-none px-1">×</button>
+            <button type="button" onClick={() => onChange(selected.filter((_, si) => si !== i))} aria-label={t({ en: 'Remove variable', is: 'Fjarlægja breytu' })}
+              className="w-8 h-8 rounded-md text-muted hover:text-[#c4242a] hover:bg-[#ffedea] flex items-center justify-center">
+              <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8M12 4l-8 8" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" /></svg>
+            </button>
           )}
         </div>
       ))}
       {selected.length < max && (
-        <button onClick={add} className="text-xs text-blue-600 hover:underline text-left">+ Add variable</button>
+        <button type="button" onClick={add} className="text-[13px] text-muted hover:text-ink underline underline-offset-4 text-left">{t({ en: 'Add variable', is: 'Bæta við breytu' })}</button>
       )}
     </div>
   )
@@ -814,6 +938,8 @@ interface Props {
 }
 
 export function GrofTab({ events, players, matches, trackedTeamId }: Props) {
+  const t = useT()
+  const lang = useLang(st => st.lang)
   const [chartType, setChartType] = useState<ChartTypeId>('line')
   const [datasetId, setDatasetId] = useState<DatasetId>('attack')
   const [yVars, setYVars] = useState<string[]>(['goals'])
@@ -829,13 +955,25 @@ export function GrofTab({ events, players, matches, trackedTeamId }: Props) {
 
   const effectivePlayerId = showPlayerFilter && playerId ? playerId : null
 
+  const indexDefs = useIndexStore(st => st.defs)
+  // One row per match, oldest first, so charts read left to right through the season.
+  // `matches` must be the same selection the events were loaded for (the dashboard's chip filter).
+  const chronological = useMemo(
+    () => [...matches].sort((a, b) => (a.match_date ?? '').localeCompare(b.match_date ?? '') || a.id.localeCompare(b.id)),
+    [matches],
+  )
   const data = useMemo(
-    () => buildDataset(datasetId, events, fieldPlayers, goalkeepers, matches, trackedTeamId, effectivePlayerId),
-    [datasetId, events, fieldPlayers, goalkeepers, matches, trackedTeamId, effectivePlayerId],
+    () => buildDataset(datasetId, events, fieldPlayers, goalkeepers, chronological, trackedTeamId, effectivePlayerId, indexDefs),
+    [datasetId, events, fieldPlayers, goalkeepers, chronological, trackedTeamId, effectivePlayerId, indexDefs],
   )
 
-  const chartDef = CHART_TYPES.find(c => c.id === chartType)!
-  const availVars = DATASET_VARS[datasetId]
+  const chartDefRaw = CHART_TYPES.find(c => c.id === chartType)!
+  const chartDef = { ...chartDefRaw, label: tr(chartDefRaw.label, lang), desc: tr(chartDefRaw.desc, lang) }
+  const availVars = useMemo(() => {
+    const base = DATASET_VARS[datasetId].map(v => ({ ...v, label: tr(v.label, lang) }))
+    if (datasetId !== 'matches') return base
+    return [...base, ...indexDefs.filter(d => !d.hidden).map(d => ({ id: ixVar(d.key), label: d.key, short: d.key.slice(0, 6) }))]
+  }, [datasetId, lang, indexDefs])
 
   const safeYVars = yVars.filter(v => availVars.some(d => d.id === v))
   const effectiveYVars = safeYVars.length ? safeYVars : [availVars[0]?.id ?? '']
@@ -878,34 +1016,35 @@ export function GrofTab({ events, players, matches, trackedTeamId }: Props) {
       : null
     : null
 
-  return (
-    <div className="space-y-4 p-2">
+  const fieldLabel = 'text-[13px] font-medium'
 
-      {/* Chart type grid */}
-      <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+  return (
+    <div className="space-y-4">
+
+      {/* Chart type */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-2" role="group" aria-label={t({ en: 'Chart type', is: 'Tegund grafs' })}>
         {CHART_TYPES.map(ct => (
           <button
             key={ct.id}
+            type="button"
+            aria-pressed={chartType === ct.id}
             onClick={() => setChartType(ct.id)}
-            title={ct.desc}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold border transition-colors text-center ${
-              chartType === ct.id
-                ? 'bg-blue-600 text-white border-blue-600'
-                : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+            title={tr(ct.desc, lang)}
+            className={`h-10 px-3 rounded-md text-[14px] border transition-colors text-center truncate ${
+              chartType === ct.id ? 'bg-[#111214] text-white border-[#111214]' : 'bg-white text-ink border-line hover:border-[#9aa0a8]'
             }`}
           >
-            {ct.label}
+            {tr(ct.label, lang)}
           </button>
         ))}
       </div>
 
       {/* Controls */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 flex flex-wrap gap-5 items-start">
-
-        {/* Dataset */}
+      <div className="bg-white rounded-lg border border-line p-4 flex flex-wrap gap-5 items-start">
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Dataset</span>
+          <label htmlFor="grof-dataset" className={fieldLabel}>{t({ en: 'Data', is: 'Gögn' })}</label>
           <select
+            id="grof-dataset"
             value={datasetId}
             onChange={e => {
               const d = e.target.value as DatasetId
@@ -915,24 +1054,19 @@ export function GrofTab({ events, players, matches, trackedTeamId }: Props) {
               setXVar(DATASET_VARS[d][1]?.id ?? first)
               setPlayerId('')
             }}
-            className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className={SELECT_CLS}
           >
             {(Object.entries(DATASET_LABELS) as [DatasetId, string][]).map(([id, lbl]) => (
-              <option key={id} value={id}>{lbl}</option>
+              <option key={id} value={id}>{tr(lbl, lang)}</option>
             ))}
           </select>
         </div>
 
-        {/* Player filter */}
         {showPlayerFilter && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Player</span>
-            <select
-              value={playerId}
-              onChange={e => setPlayerId(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              <option value="">— Team totals —</option>
+            <label htmlFor="grof-player" className={fieldLabel}>{t({ en: 'Player', is: 'Leikmaður' })}</label>
+            <select id="grof-player" value={playerId} onChange={e => setPlayerId(e.target.value)} className={SELECT_CLS}>
+              <option value="">{t({ en: 'Team totals', is: 'Allt liðið' })}</option>
               {filterablePlayers
                 .sort((a, b) => (a.jersey_number ?? 99) - (b.jersey_number ?? 99))
                 .map(p => (
@@ -944,65 +1078,47 @@ export function GrofTab({ events, players, matches, trackedTeamId }: Props) {
           </div>
         )}
 
-        {/* X axis (scatter only) */}
         {chartDef.needsX && (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">X-Axis</span>
-            <select
-              value={effectiveXVar}
-              onChange={e => setXVar(e.target.value)}
-              className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <label htmlFor="grof-x" className={fieldLabel}>{t({ en: 'Horizontal axis', is: 'Lárétti ás' })}</label>
+            <select id="grof-x" value={effectiveXVar} onChange={e => setXVar(e.target.value)} className={SELECT_CLS}>
               {availVars.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </div>
         )}
 
-        {/* Y axis / variables */}
         {isMultiY ? (
           <VarSelector
             vars={availVars}
             selected={effectiveYVars}
             onChange={v => setYVars(v)}
-            label={chartType === 'heatmap' || chartType === 'mosaic' || chartType === 'scatter-matrix' ? 'Variables' : 'Y-Axis Variables'}
+            label={chartType === 'heatmap' || chartType === 'mosaic' || chartType === 'scatter-matrix' ? t({ en: 'Variables', is: 'Breytur' }) : t({ en: 'Vertical axis', is: 'Lóðrétti ás' })}
             max={maxY}
           />
         ) : (
           <div className="flex flex-col gap-1.5">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
-              {chartDef.needsX ? 'Y-Axis' : 'Variable'}
-            </span>
-            <select
-              value={effectiveYVars[0]}
-              onChange={e => setYVars([e.target.value])}
-              className="text-sm border border-gray-300 rounded-lg px-2 py-1.5 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
+            <label htmlFor="grof-y" className={fieldLabel}>
+              {chartDef.needsX ? t({ en: 'Vertical axis', is: 'Lóðrétti ás' }) : t({ en: 'Variable', is: 'Breyta' })}
+            </label>
+            <select id="grof-y" value={effectiveYVars[0]} onChange={e => setYVars([e.target.value])} className={SELECT_CLS}>
               {availVars.map(v => <option key={v.id} value={v.id}>{v.label}</option>)}
             </select>
           </div>
         )}
 
-        {/* Hint */}
-        <div className="ml-auto self-end">
-          <p className="text-xs text-gray-400 italic max-w-[200px] text-right">{chartDef.desc}</p>
-        </div>
+        <p className="ml-auto self-end text-[13px] text-muted max-w-[240px] text-right">{chartDef.desc}</p>
       </div>
 
-      {/* Active filter indicator */}
       {selectedPlayerName && (
-        <div className="flex items-center gap-2 px-1">
-          <span className="text-xs text-gray-500">Showing:</span>
-          <span className="text-xs font-semibold bg-blue-50 text-blue-700 border border-blue-200 rounded-full px-2.5 py-0.5">
-            {selectedPlayerName} — individual stats per match
-          </span>
-        </div>
+        <p className="text-[14px] text-muted">
+          {t({ en: 'Showing', is: 'Sýnir' })} <span className="text-ink font-medium">{selectedPlayerName}</span>, {t({ en: 'one value per match.', is: 'eitt gildi á leik.' })}
+        </p>
       )}
 
-      {/* Chart area */}
-      <div className="bg-white rounded-xl border border-gray-200 p-4 min-h-[200px]">
+      <div className="bg-white rounded-lg border border-line p-4 min-h-[200px]">
         {matches.length === 0 ? (
-          <div className="flex items-center justify-center h-48 text-gray-400 text-sm">
-            No matches in current filter
+          <div className="flex items-center justify-center h-48 text-muted text-[14px]">
+            {t({ en: 'No matches in this filter.', is: 'Engir leikir í þessari síu.' })}
           </div>
         ) : renderChart()}
       </div>
