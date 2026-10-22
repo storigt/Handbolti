@@ -1,4 +1,5 @@
 import { supabase } from './client'
+import { fetchAll } from './fetchAll'
 import type { Team, Player, Match, Roster, Season, Competition, MatchInsert, RosterInsert, Profile } from '@/lib/db/schema'
 
 // ─── Teams ────────────────────────────────────────────────────────────────────
@@ -265,13 +266,13 @@ export async function getTeamById(teamId: string): Promise<Team | null> {
 }
 
 export async function getMatchEvents(matchId: string): Promise<import('@/lib/db/schema').Event[]> {
-  const { data, error } = await supabase
+  return fetchAll<import('@/lib/db/schema').Event>((from, to) => supabase
     .from('events')
     .select('*')
     .eq('match_id', matchId)
     .order('created_at')
-  if (error) throw error
-  return (data ?? []) as import('@/lib/db/schema').Event[]
+    .order('id')
+    .range(from, to))
 }
 
 // ─── Auth / profiles ──────────────────────────────────────────────────────────

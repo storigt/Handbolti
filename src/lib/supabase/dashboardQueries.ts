@@ -1,4 +1,5 @@
 import { supabase } from './client'
+import { fetchAll } from './fetchAll'
 import type { Match, Team, Competition, Season, Event, CourtLineup } from '@/lib/db/schema'
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -95,14 +96,14 @@ export interface GoalkeeperSeasonRow {
 // ─── Queries ──────────────────────────────────────────────────────────────────
 
 export async function getMatchHistory(trackedTeamId: string): Promise<MatchWithTeams[]> {
-  const { data, error } = await supabase
+  return fetchAll<MatchWithTeams>((from, to) => supabase
     .from('matches')
     .select('*, home_team:teams!home_team_id(*), away_team:teams!away_team_id(*), competition:competitions(*)')
     .eq('tracked_team_id', trackedTeamId)
     .eq('status', 'final')
     .order('match_date', { ascending: false })
-  if (error) throw error
-  return data as MatchWithTeams[]
+    .order('id')
+    .range(from, to) as unknown as PromiseLike<{ data: MatchWithTeams[] | null; error: unknown }>)
 }
 
 export async function getSeasonPlayerTotals(
@@ -196,24 +197,24 @@ export async function getSeasonsForTeam(trackedTeamId: string): Promise<Season[]
 
 export async function getMatchEventsForMatches(matchIds: string[]): Promise<Event[]> {
   if (matchIds.length === 0) return []
-  const { data, error } = await supabase
+  return fetchAll<Event>((from, to) => supabase
     .from('events')
     .select('*')
     .in('match_id', matchIds)
     .eq('is_voided', false)
     .eq('is_edited', false)
-  if (error) throw error
-  return (data ?? []) as Event[]
+    .order('id')
+    .range(from, to))
 }
 
 export async function getLineupsForMatches(matchIds: string[]): Promise<CourtLineup[]> {
   if (matchIds.length === 0) return []
-  const { data, error } = await supabase
+  return fetchAll<CourtLineup>((from, to) => supabase
     .from('court_lineups')
     .select('*')
     .in('match_id', matchIds)
-  if (error) throw error
-  return (data ?? []) as CourtLineup[]
+    .order('id')
+    .range(from, to))
 }
 
 export async function getCompetitionsForTeam(
