@@ -44,9 +44,16 @@ import type {
   Player,
   Roster,
 } from '@/lib/db/schema'
-import { enqueue } from '@/lib/sync/syncQueue'
-import { upsertEvent, voidEventWithSync } from '@/lib/sync/supabaseSync'
-import { supabase } from '@/lib/supabase/client'
+import { enqueue, enqueueLineup } from '@/lib/sync/syncQueue'
+import { syncPendingEvents } from '@/lib/sync/supabaseSync'
+
+/** Save an event to the offline queue first, then try to upload it.
+ *  The queue is the safety net: if the upload fails it is retried later. */
+function queueAndSync(event: EventInsert) {
+  void enqueue(event)
+    .then(() => { if (navigator.onLine) void syncPendingEvents().catch(() => {}) })
+    .catch(() => {})
+}
 
 export interface RosteredPlayer extends Player {
   roster: Roster
@@ -184,14 +191,12 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
   initLineup: async (playerIds) => {
     const { match, currentPeriod, currentMatchMinute } = get()
     if (!match) return
-    // Set local lineup immediately; Supabase row is best-effort
-    set({ currentLineupPlayerIds: playerIds })
-    const { data, error } = await supabase
-      .from('court_lineups')
-      .insert({ match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: playerIds })
-      .select('id')
-      .single()
-    if (!error && data) set({ currentLineupId: data.id })
+    // Lineup id is generated here so events can reference it right away, even
+    // offline. The row is queued and uploaded before any event that uses it.
+    const lineupId = uuidv4()
+    set({ currentLineupPlayerIds: playerIds, currentLineupId: lineupId })
+    await enqueueLineup({ id: lineupId, match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: playerIds })
+    if (navigator.onLine) void syncPendingEvents().catch(() => {})
   },
 
   logSubstitution: async (playerInId, playerOutId) => {
@@ -202,17 +207,12 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
       .filter(id => id !== playerOutId)
       .concat(playerInId)
 
-    // Update local state immediately so the panel reflects the change at once
-    set({ currentLineupPlayerIds: newPlayerIds })
-
-    const { data: lineupData, error } = await supabase
-      .from('court_lineups')
-      .insert({ match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: newPlayerIds })
-      .select('id')
-      .single()
-
-    if (error || !lineupData) return
-    set({ currentLineupId: lineupData.id })
+    // Update local state immediately so the panel reflects the change at once.
+    // The new lineup gets a client-generated id and is queued for upload, so
+    // the substitution is recorded even when offline.
+    const lineupId = uuidv4()
+    set({ currentLineupPlayerIds: newPlayerIds, currentLineupId: lineupId })
+    await enqueueLineup({ id: lineupId, match_id: match.id, period: currentPeriod, match_minute: currentMatchMinute, player_ids: newPlayerIds })
 
     get().commitEvent({
       event_type: 'SUBSTITUTION',
@@ -220,7 +220,7 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
       player_id: playerInId,
       team_id: match.tracked_team_id,
       context: { player_out_id: playerOutId },
-      lineup_id: lineupData.id,
+      lineup_id: lineupId,
     })
   },
 
@@ -270,10 +270,7 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
     }
 
     set({ events: [...events, event] })
-    void enqueue(event as EventInsert)
-    if (navigator.onLine) {
-      void upsertEvent(event as EventInsert).catch(() => {})
-    }
+    queueAndSync(event as EventInsert)
   },
 
   undoLast: () => {
@@ -284,14 +281,21 @@ export const useMatchStore = create<MatchStoreState>((set, get) => ({
   },
 
   voidEvent: (clientId) => {
+    const target = get().events.find(e => e.client_id === clientId)
+    if (!target || target.is_voided) return
+    const voided: Event = {
+      ...target,
+      is_voided: true,
+      void_reason: 'operator_undo',
+      voided_at: new Date().toISOString(),
+    }
     set(state => ({
-      events: state.events.map(e =>
-        e.client_id === clientId
-          ? { ...e, is_voided: true, voided_at: new Date().toISOString() }
-          : e,
-      ),
+      events: state.events.map(e => (e.client_id === clientId ? voided : e)),
     }))
-    void voidEventWithSync(clientId).catch(() => {})
+    // Queue the voided version (replacing any unsent original) and upload it.
+    // Upserting the full row works whether or not the original already reached
+    // the server, and the queue keeps it safe if we're offline.
+    queueAndSync(voided as EventInsert)
   },
 }))
 
